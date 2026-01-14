@@ -1,9 +1,7 @@
-import YearlyRevenueSummary from "@/components/YearlyRevenueSummary";
-import UserDashboard from "@/components/dashboard/UserDashboard";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { NotificationBell } from "@/components/NotificationBell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useEffect } from "react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { BarChart3, LayoutDashboard, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +9,22 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Lazy load heavy components with recharts and complex UI
+const YearlyRevenueSummary = lazy(() => import("@/components/YearlyRevenueSummary"));
+const UserDashboard = lazy(() => import("@/components/dashboard/UserDashboard"));
+
+// Loading skeleton for dashboard content
+const DashboardContentSkeleton = () => (
+  <div className="p-6 space-y-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {[...Array(8)].map((_, i) => (
+        <Skeleton key={i} className="h-32 rounded-lg" />
+      ))}
+    </div>
+  </div>
+);
 
 type DashboardView = "analytics" | "overview";
 
@@ -107,8 +121,16 @@ const Dashboard = () => {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await queryClient.invalidateQueries({ queryKey: ['user-'] });
-      await queryClient.invalidateQueries({ queryKey: ['dashboard-'] });
+      // Invalidate all dashboard-related queries using predicate function
+      await queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          if (typeof key !== 'string') return false;
+          return key.startsWith('user-') || 
+                 key.startsWith('dashboard-') || 
+                 key === 'all-user-profiles';
+        }
+      });
       toast.success("Dashboard refreshed");
     } catch {
       toast.error("Failed to refresh");
@@ -216,12 +238,16 @@ const Dashboard = () => {
       {/* Main Content Area */}
       <div className="flex-1 min-h-0 overflow-auto">
         {isAdmin && currentView === "analytics" ? (
-          <div className="p-6 space-y-8">
-            <YearlyRevenueSummary selectedYear={selectedYear} />
-            <div className="border-t border-border" />
-          </div>
+          <Suspense fallback={<DashboardContentSkeleton />}>
+            <div className="p-6 space-y-8">
+              <YearlyRevenueSummary selectedYear={selectedYear} />
+              <div className="border-t border-border" />
+            </div>
+          </Suspense>
         ) : (
-          <UserDashboard hideHeader />
+          <Suspense fallback={<DashboardContentSkeleton />}>
+            <UserDashboard hideHeader />
+          </Suspense>
         )}
       </div>
     </div>

@@ -14,19 +14,20 @@ export const DiscussionsStageForm = ({ formData, onFieldChange, fieldErrors }: D
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Discussions Stage</CardTitle>
+      <CardHeader className="pb-4">
+        <CardTitle className="text-lg font-semibold">Discussions Stage</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {fields.map(field => (
-            <FormFieldRenderer
-              key={field}
-              field={field}
-              value={formData[field as keyof Deal]}
-              onChange={onFieldChange}
-              error={fieldErrors[field]}
-            />
+            <div key={field} className={field === 'internal_comment' ? 'md:col-span-2 lg:col-span-3' : ''}>
+              <FormFieldRenderer
+                field={field}
+                value={formData[field as keyof Deal]}
+                onChange={onFieldChange}
+                error={fieldErrors[field]}
+              />
+            </div>
           ))}
         </div>
       </CardContent>

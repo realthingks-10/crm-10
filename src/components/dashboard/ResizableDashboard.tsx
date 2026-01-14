@@ -48,9 +48,9 @@ export const ResizableDashboard = ({
   if (!containerWidth || containerWidth < 320) {
     return (
       <div className="dashboard-grid w-full">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {visibleWidgets.slice(0, 8).map((key) => (
-            <div key={key} className="h-32 rounded-lg bg-muted/50" />
+            <div key={key} className="h-32 rounded-lg skeleton-shimmer" />
           ))}
         </div>
       </div>

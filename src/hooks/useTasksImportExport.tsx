@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 import { Task, TaskStatus, TaskPriority, TaskModuleType } from '@/types/task';
 import { format } from 'date-fns';
+import { UserNameUtils } from '@/utils/userNameUtils';
 
 interface ImportResult {
   success: number;
@@ -19,11 +20,21 @@ export const useTasksImportExport = (tasks: Task[], onRefresh: () => void) => {
   const exportToCSV = async () => {
     setExporting(true);
     try {
+      // Collect user IDs for display names
+      const userIds: string[] = [];
+      tasks.forEach(task => {
+        if (task.assigned_to) userIds.push(task.assigned_to);
+        if (task.created_by) userIds.push(task.created_by);
+      });
+      const userNameMap = await UserNameUtils.fetchUserDisplayNames(userIds);
+
       const headers = [
+        'ID',
         'Title',
         'Description',
         'Status',
         'Priority',
+        'Category',
         'Due Date',
         'Due Time',
         'Module Type',
@@ -35,27 +46,36 @@ export const useTasksImportExport = (tasks: Task[], onRefresh: () => void) => {
         'Assigned To',
         'Created By',
         'Created At',
+        'Updated At',
         'Completed At',
       ];
 
-      const rows = tasks.map(task => [
-        task.title,
-        task.description || '',
-        task.status,
-        task.priority,
-        task.due_date || '',
-        task.due_time || '',
-        task.module_type || '',
-        task.account_name || '',
-        task.contact_name || '',
-        task.lead_name || '',
-        task.deal_name || '',
-        task.meeting_subject || '',
-        task.assigned_user_name || '',
-        task.created_by_name || '',
-        task.created_at ? format(new Date(task.created_at), 'yyyy-MM-dd HH:mm:ss') : '',
-        task.completed_at ? format(new Date(task.completed_at), 'yyyy-MM-dd HH:mm:ss') : '',
-      ]);
+      const rows = tasks.map(task => {
+        const assignedToName = task.assigned_to ? (userNameMap[task.assigned_to] || task.assigned_user_name || '') : '';
+        const createdByName = task.created_by ? (userNameMap[task.created_by] || task.created_by_name || '') : '';
+        
+        return [
+          task.id,
+          task.title,
+          task.description || '',
+          task.status,
+          task.priority,
+          task.category || '',
+          task.due_date || '',
+          task.due_time || '',
+          task.module_type || '',
+          task.account_name || '',
+          task.contact_name || '',
+          task.lead_name || '',
+          task.deal_name || '',
+          task.meeting_subject || '',
+          assignedToName,
+          createdByName,
+          task.created_at ? format(new Date(task.created_at), 'yyyy-MM-dd HH:mm:ss') : '',
+          task.updated_at ? format(new Date(task.updated_at), 'yyyy-MM-dd HH:mm:ss') : '',
+          task.completed_at ? format(new Date(task.completed_at), 'yyyy-MM-dd HH:mm:ss') : '',
+        ];
+      });
 
       const csvContent = [
         headers.join(','),
@@ -141,10 +161,22 @@ export const useTasksImportExport = (tasks: Task[], onRefresh: () => void) => {
       const priorityIndex = headers.findIndex(h => h.includes('priority'));
       const dueDateIndex = headers.findIndex(h => h.includes('due') && h.includes('date'));
       const dueTimeIndex = headers.findIndex(h => h.includes('due') && h.includes('time'));
+      const assignedToIndex = headers.findIndex(h => h.includes('assigned') || h === 'assigned to' || h === 'assigned_to');
 
       if (titleIndex === -1) {
         throw new Error('CSV must have a "Title" column');
       }
+
+      // Collect user names for lookup
+      const userNames: string[] = [];
+      if (assignedToIndex !== -1) {
+        dataRows.forEach(row => {
+          if (row[assignedToIndex]) {
+            userNames.push(row[assignedToIndex]);
+          }
+        });
+      }
+      const userIdMap = await UserNameUtils.fetchUserIdsByNames(userNames);
 
       const validStatuses: TaskStatus[] = ['open', 'in_progress', 'completed', 'cancelled'];
       const validPriorities: TaskPriority[] = ['high', 'medium', 'low'];
@@ -180,8 +212,8 @@ export const useTasksImportExport = (tasks: Task[], onRefresh: () => void) => {
           let due_date: string | null = null;
           if (dueDateIndex !== -1 && row[dueDateIndex]) {
             const dateStr = row[dueDateIndex].trim();
-            const parsedDate = new Date(dateStr);
-            if (!isNaN(parsedDate.getTime())) {
+            const parsedDate = parseDateFromMultipleFormats(dateStr);
+            if (parsedDate) {
               due_date = format(parsedDate, 'yyyy-MM-dd');
             }
           }
@@ -191,6 +223,16 @@ export const useTasksImportExport = (tasks: Task[], onRefresh: () => void) => {
             due_time = row[dueTimeIndex].trim();
           }
 
+          // Resolve assigned_to from name to UUID
+          let assigned_to: string | null = null;
+          if (assignedToIndex !== -1 && row[assignedToIndex]) {
+            assigned_to = UserNameUtils.resolveUserId(row[assignedToIndex], userIdMap, user.id);
+            // Only set if we found a valid user, otherwise leave null
+            if (assigned_to === user.id && row[assignedToIndex].toLowerCase() !== user.email?.toLowerCase()) {
+              assigned_to = null; // Don't default to current user if name wasn't found
+            }
+          }
+
           const { error } = await supabase.from('tasks').insert({
             title,
             description: descIndex !== -1 ? row[descIndex]?.trim() || null : null,
@@ -198,6 +240,7 @@ export const useTasksImportExport = (tasks: Task[], onRefresh: () => void) => {
             priority,
             due_date,
             due_time,
+            assigned_to,
             created_by: user.id,
           });
 
@@ -241,3 +284,48 @@ export const useTasksImportExport = (tasks: Task[], onRefresh: () => void) => {
     importFromCSV,
   };
 };
+
+// Helper function to parse dates from multiple formats
+function parseDateFromMultipleFormats(dateStr: string): Date | null {
+  if (!dateStr || !dateStr.trim()) return null;
+  
+  const trimmed = dateStr.trim();
+
+  // YYYY-MM-DD format
+  const yyyymmdd = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (yyyymmdd) {
+    const [, year, month, day] = yyyymmdd;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime())) return date;
+  }
+
+  // DD/MM/YYYY format
+  const ddmmyyyySlash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyySlash) {
+    const [, day, month, year] = ddmmyyyySlash;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime())) return date;
+  }
+
+  // DD-MM-YYYY format
+  const ddmmyyyyDash = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (ddmmyyyyDash) {
+    const [, day, month, year] = ddmmyyyyDash;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime())) return date;
+  }
+
+  // MM/DD/YYYY format
+  const mmddyyyy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mmddyyyy) {
+    const [, month, day, year] = mmddyyyy;
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    if (!isNaN(date.getTime())) return date;
+  }
+
+  // Fallback to generic parsing
+  const genericDate = new Date(trimmed);
+  if (!isNaN(genericDate.getTime())) return genericDate;
+
+  return null;
+}

@@ -102,17 +102,20 @@ export const InlineEditCell = ({
   };
 
   if (!isEditing) {
+    const displayValue = formatDisplayValue();
+    const isEmpty = displayValue === '-';
+    
     return (
       <div 
-        className="group flex items-center justify-between cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors min-h-[32px]"
+        className={`group flex items-center cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors min-h-[32px] ${isEmpty ? 'justify-center' : 'justify-between'}`}
         onClick={(e) => {
           e.stopPropagation();
           setIsEditing(true);
         }}
         title="Click to edit"
       >
-        <span className="truncate flex-1">{formatDisplayValue()}</span>
-        <Edit3 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-1 text-muted-foreground" />
+        <span className={`truncate ${isEmpty ? 'text-muted-foreground' : 'flex-1'}`}>{displayValue}</span>
+        {!isEmpty && <Edit3 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity ml-1 text-muted-foreground flex-shrink-0" />}
       </div>
     );
   }
@@ -185,9 +188,9 @@ export const InlineEditCell = ({
         
       case 'stage':
         return (
-          <Select value={editValue} onValueChange={setEditValue}>
+          <Select value={editValue || undefined} onValueChange={setEditValue}>
             <SelectTrigger className="w-full">
-              <SelectValue />
+              <SelectValue placeholder="Select stage" />
             </SelectTrigger>
             <SelectContent>
               {DEAL_STAGES.map(stage => (
@@ -201,9 +204,9 @@ export const InlineEditCell = ({
         
       case 'priority':
         return (
-          <Select value={editValue?.toString()} onValueChange={(val) => setEditValue(parseInt(val))}>
+          <Select value={editValue ? editValue.toString() : undefined} onValueChange={(val) => setEditValue(parseInt(val))}>
             <SelectTrigger className="w-full">
-              <SelectValue />
+              <SelectValue placeholder="Select priority" />
             </SelectTrigger>
             <SelectContent>
               {[1, 2, 3, 4, 5].map(num => (
@@ -217,12 +220,12 @@ export const InlineEditCell = ({
         
       case 'select':
         return (
-          <Select value={editValue} onValueChange={setEditValue}>
+          <Select value={editValue || undefined} onValueChange={setEditValue}>
             <SelectTrigger className="w-full">
-              <SelectValue />
+              <SelectValue placeholder="Select option" />
             </SelectTrigger>
             <SelectContent>
-              {options.map(option => (
+              {options.filter(option => option && option.trim() !== '').map(option => (
                 <SelectItem key={option} value={option}>
                   {option}
                 </SelectItem>
@@ -233,12 +236,12 @@ export const InlineEditCell = ({
 
       case 'userSelect':
         return (
-          <Select value={editValue} onValueChange={setEditValue}>
+          <Select value={editValue || undefined} onValueChange={setEditValue}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Select user" />
             </SelectTrigger>
             <SelectContent>
-              {userOptions.map(user => (
+              {userOptions.filter(user => user.id && user.id.trim() !== '').map(user => (
                 <SelectItem key={user.id} value={user.id}>
                   {user.full_name || 'Unknown'}
                 </SelectItem>
@@ -262,16 +265,16 @@ export const InlineEditCell = ({
   };
 
   return (
-    <div className="flex items-center gap-1 animate-fade-in" onClick={(e) => e.stopPropagation()}>
-      <div className="flex-1">
+    <div className="flex items-center gap-1 animate-fade-in min-w-0" onClick={(e) => e.stopPropagation()}>
+      <div className="flex-1 min-w-0 overflow-hidden">
         {renderEditControl()}
       </div>
-      <div className="flex gap-1 ml-1">
+      <div className="flex gap-0.5 flex-shrink-0">
         <Button
           size="sm"
           variant="ghost"
           onClick={handleSave}
-          className="h-6 w-6 p-0 hover:bg-green-100"
+          className="h-5 w-5 p-0 hover:bg-green-100 dark:hover:bg-green-900/30"
           title="Save changes"
         >
           <Check className="w-3 h-3 text-green-600" />
@@ -280,7 +283,7 @@ export const InlineEditCell = ({
           size="sm"
           variant="ghost"
           onClick={handleCancel}
-          className="h-6 w-6 p-0 hover:bg-red-100"
+          className="h-5 w-5 p-0 hover:bg-red-100 dark:hover:bg-red-900/30"
           title="Cancel"
         >
           <X className="w-3 h-3 text-red-600" />

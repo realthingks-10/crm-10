@@ -15,8 +15,8 @@ export const OfferedStageForm = ({ formData, onFieldChange, fieldErrors }: Offer
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Offered Stage</CardTitle>
+      <CardHeader className="pb-4">
+        <CardTitle className="text-lg font-semibold">Offered Stage</CardTitle>
         <p className="text-sm text-muted-foreground">
           Complete these required fields to move to final stages (Won, Lost, Dropped)
         </p>
@@ -24,13 +24,14 @@ export const OfferedStageForm = ({ formData, onFieldChange, fieldErrors }: Offer
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {requiredFields.map(field => (
-            <FormFieldRenderer
-              key={field}
-              field={field}
-              value={formData[field as keyof Deal]}
-              onChange={onFieldChange}
-              error={fieldErrors[field]}
-            />
+            <div key={field} className={field === 'closing' ? 'md:col-span-2' : ''}>
+              <FormFieldRenderer
+                field={field}
+                value={formData[field as keyof Deal]}
+                onChange={onFieldChange}
+                error={fieldErrors[field]}
+              />
+            </div>
           ))}
         </div>
       </CardContent>

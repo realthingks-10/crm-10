@@ -1,4 +1,3 @@
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 interface TableSkeletonProps {
@@ -19,10 +18,10 @@ export const TableSkeleton = ({
       {showHeader && (
         <div className="flex items-center gap-4 bg-muted/30 px-4 py-3 border-b border-border">
           {Array.from({ length: columns }).map((_, i) => (
-            <Skeleton 
+            <div 
               key={`header-${i}`} 
               className={cn(
-                "h-4 rounded",
+                "h-4 rounded skeleton-shimmer",
                 i === 0 ? "w-8" : i === 1 ? "w-32" : "w-24"
               )} 
             />
@@ -36,14 +35,15 @@ export const TableSkeleton = ({
             className="flex items-center gap-4 px-4 py-3 bg-card"
           >
             {Array.from({ length: columns }).map((_, colIndex) => (
-              <Skeleton 
+              <div 
                 key={`cell-${rowIndex}-${colIndex}`} 
                 className={cn(
-                  "h-4 rounded",
+                  "h-4 rounded skeleton-shimmer",
                   colIndex === 0 ? "w-4" : 
                   colIndex === 1 ? "w-40" : 
                   colIndex === columns - 1 ? "w-20" : "w-28"
                 )} 
+                style={{ animationDelay: `${rowIndex * 0.05}s` }}
               />
             ))}
           </div>

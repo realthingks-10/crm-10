@@ -70,24 +70,56 @@ export class UserNameUtils {
     return id; // Keep full UUID for import/export roundtrip
   }
 
-  // Format date/datetime for export (readable format)
+  // Format date/datetime for export (ISO standard format)
   static formatDateTimeForExport(dateValue: any): string {
     if (!dateValue) return '';
     
     try {
       const date = new Date(dateValue);
       if (isNaN(date.getTime())) return '';
-      return format(date, 'MMM dd, yyyy HH:mm');
+      return format(date, 'yyyy-MM-dd HH:mm:ss');
+    } catch {
+      return '';
+    }
+  }
+
+  // Format date for export (ISO standard format)
+  static formatDateForExport(dateValue: any): string {
+    if (!dateValue) return '';
+    
+    try {
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) return '';
+      return format(date, 'yyyy-MM-dd');
+    } catch {
+      return '';
+    }
+  }
+
+  // Format time for export (HH:mm format)
+  static formatTimeForExport(dateValue: any): string {
+    if (!dateValue) return '';
+    
+    try {
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) return '';
+      return format(date, 'HH:mm');
     } catch {
       return '';
     }
   }
 
   // User fields that should be converted
-  static readonly USER_FIELDS = ['account_owner', 'contact_owner', 'created_by', 'modified_by', 'assigned_to', 'lead_owner'];
+  static readonly USER_FIELDS = [
+    'account_owner', 'contact_owner', 'created_by', 'modified_by', 
+    'assigned_to', 'lead_owner', 'host', 'organizer'
+  ];
   
   // Date/time fields that should be formatted
-  static readonly DATETIME_FIELDS = ['created_at', 'modified_at', 'created_time', 'modified_time', 'updated_at'];
+  static readonly DATETIME_FIELDS = [
+    'created_at', 'modified_at', 'created_time', 'modified_time', 
+    'updated_at', 'completed_at', 'last_contacted_at'
+  ];
 
   // Check if field is a user field
   static isUserField(fieldName: string): boolean {

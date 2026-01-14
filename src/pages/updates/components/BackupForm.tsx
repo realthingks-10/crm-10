@@ -57,7 +57,7 @@ const BackupForm = ({ onClose }: BackupFormProps) => {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Add Backup Record</DialogTitle>
         </DialogHeader>

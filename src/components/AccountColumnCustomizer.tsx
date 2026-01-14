@@ -24,17 +24,18 @@ interface AccountColumnCustomizerProps {
 export const defaultAccountColumns: AccountColumnConfig[] = [
   { field: 'company_name', label: 'Company Name', visible: true, order: 0 },
   { field: 'email', label: 'Email', visible: true, order: 1 },
-  { field: 'company_type', label: 'Company Type', visible: true, order: 2 },
-  { field: 'industry', label: 'Industry', visible: true, order: 3 },
-  { field: 'tags', label: 'Tags', visible: true, order: 4 },
+  { field: 'phone', label: 'Phone', visible: true, order: 2 },
+  { field: 'company_type', label: 'Company Type', visible: true, order: 3 },
+  { field: 'industry', label: 'Industry', visible: true, order: 4 },
   { field: 'country', label: 'Country', visible: true, order: 5 },
-  { field: 'status', label: 'Status', visible: true, order: 6 },
+  { field: 'region', label: 'Region', visible: false, order: 6 },
   { field: 'website', label: 'Website', visible: false, order: 7 },
-  { field: 'region', label: 'Region', visible: false, order: 8 },
-  { field: 'phone', label: 'Phone', visible: false, order: 9 },
-  { field: 'account_owner', label: 'Account Owner', visible: true, order: 10 },
-  { field: 'deal_count', label: 'Deals', visible: false, order: 11 },
-  { field: 'contact_count', label: 'Contacts', visible: false, order: 12 },
+  { field: 'tags', label: 'Tags', visible: true, order: 8 },
+  { field: 'status', label: 'Status', visible: true, order: 9 },
+  { field: 'deal_count', label: 'Deals', visible: false, order: 10 },
+  { field: 'contact_count', label: 'Contacts', visible: false, order: 11 },
+  { field: 'lead_count', label: 'Leads', visible: false, order: 12 },
+  { field: 'account_owner', label: 'Account Owner', visible: true, order: 13 },
 ];
 
 export const AccountColumnCustomizer = ({
@@ -45,26 +46,32 @@ export const AccountColumnCustomizer = ({
   onSave,
   isSaving = false,
 }: AccountColumnCustomizerProps) => {
-  const [localColumns, setLocalColumns] = useState<AccountColumnConfig[]>(() => {
-    const existingFields = new Set(columns.map(c => c.field));
-    const missingColumns = defaultAccountColumns.filter(dc => !existingFields.has(dc.field));
-    const validColumns = columns.filter(c => 
-      defaultAccountColumns.some(dc => dc.field === c.field)
-    );
-    return [...validColumns, ...missingColumns];
-  });
+  // Initialize local columns only when dialog opens
+  const [localColumns, setLocalColumns] = useState<AccountColumnConfig[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Only sync when dialog opens (not on every columns prop change)
+  // Sync local columns only when dialog opens (not on every columns prop change)
   useEffect(() => {
-    if (open) {
+    if (open && !isInitialized) {
       const existingFields = new Set(columns.map(c => c.field));
       const missingColumns = defaultAccountColumns.filter(dc => !existingFields.has(dc.field));
       const validColumns = columns.filter(c => 
         defaultAccountColumns.some(dc => dc.field === c.field)
       );
-      setLocalColumns([...validColumns, ...missingColumns]);
+      
+      if (missingColumns.length > 0 || validColumns.length !== columns.length) {
+        setLocalColumns([...validColumns, ...missingColumns]);
+      } else {
+        setLocalColumns(columns);
+      }
+      setIsInitialized(true);
     }
-  }, [open]);
+    
+    // Reset initialization flag when dialog closes
+    if (!open) {
+      setIsInitialized(false);
+    }
+  }, [open, columns, isInitialized]);
 
   const handleToggleColumn = (field: string, visible: boolean) => {
     const updated = localColumns.map(col =>

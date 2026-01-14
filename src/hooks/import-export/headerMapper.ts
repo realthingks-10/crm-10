@@ -20,6 +20,7 @@ export const createHeaderMapper = (tableName: string) => {
       }
       
       // Contact-specific field mappings (case-insensitive)
+      // Removed: website, industry, region, country, segment
       const contactMappings: Record<string, string> = {
         'id': 'id',
         'contact id': 'id',
@@ -44,18 +45,10 @@ export const createHeaderMapper = (tableName: string) => {
         'linkedin': 'linkedin',
         'linkedin url': 'linkedin',
         'linkedin profile': 'linkedin',
-        'website': 'website',
-        'website url': 'website',
-        'web': 'website',
         'contact_source': 'contact_source',
         'contact source': 'contact_source',
         'source': 'contact_source',
         'lead source': 'contact_source',
-        'industry': 'industry',
-        'sector': 'industry',
-        'region': 'region',
-        'country': 'region',
-        'nation': 'region',
         'description': 'description',
         'notes': 'description',
         'comments': 'description',

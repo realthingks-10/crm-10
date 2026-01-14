@@ -7,12 +7,12 @@ import { GenericCSVProcessor } from './import-export/genericCSVProcessor';
 import { GenericCSVExporter } from './import-export/genericCSVExporter';
 import { getExportFilename } from '@/utils/exportUtils';
 
-// Contacts field order
+// Contacts field order - Removed website, industry, region, country, segment as per requirements
 const CONTACTS_EXPORT_FIELDS = [
   'id', 'contact_name', 'company_name', 'position', 'email', 'phone_no',
-  'linkedin', 'website', 'contact_source', 'industry', 'region',
-  'description', 'contact_owner', 'created_by', 'modified_by',
-  'created_time', 'modified_time'
+  'linkedin', 'contact_source', 'tags',
+  'description', 'last_contacted_at', 'account_id', 'contact_owner', 
+  'created_by', 'modified_by', 'created_time', 'modified_time'
 ];
 
 export const useSimpleContactsImportExport = (onRefresh: () => void) => {

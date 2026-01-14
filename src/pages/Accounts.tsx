@@ -1,6 +1,6 @@
 import AccountTable from "@/components/AccountTable";
 import { Button } from "@/components/ui/button";
-import { Settings, Trash2, Upload, Download, Plus, Mail } from "lucide-react";
+import { Settings, Trash2, Upload, Download, Plus } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -8,12 +8,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useAccountsImportExport } from "@/hooks/useAccountsImportExport";
 import { AccountDeleteConfirmDialog } from "@/components/AccountDeleteConfirmDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { BulkEmailModal, BulkEmailRecipient } from "@/components/BulkEmailModal";
 
 // Export interface for AccountTable ref
 export interface AccountTableRef {
   handleBulkDelete: () => Promise<void>;
-  getSelectedAccountsForEmail: () => BulkEmailRecipient[];
 }
 
 const Accounts = () => {
@@ -25,8 +23,6 @@ const Accounts = () => {
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
-  const [showBulkEmailModal, setShowBulkEmailModal] = useState(false);
-  const [bulkEmailRecipients, setBulkEmailRecipients] = useState<BulkEmailRecipient[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Ref to call bulk delete from AccountTable
@@ -43,15 +39,6 @@ const Accounts = () => {
   const handleBulkDeleteClick = () => {
     if (selectedAccounts.length === 0) return;
     setShowBulkDeleteDialog(true);
-  };
-
-  const handleBulkEmailClick = () => {
-    if (selectedAccounts.length === 0) return;
-    if (accountTableRef.current) {
-      const recipients = accountTableRef.current.getSelectedAccountsForEmail();
-      setBulkEmailRecipients(recipients);
-      setShowBulkEmailModal(true);
-    }
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,16 +78,6 @@ const Accounts = () => {
               {selectedAccounts.length > 0 && (
                 <TooltipProvider>
                   <div className="flex items-center gap-1">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="outline" size="icon" onClick={handleBulkEmailClick}>
-                          <Mail className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Email Selected ({selectedAccounts.length})</p>
-                      </TooltipContent>
-                    </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button variant="outline" size="icon" onClick={handleBulkDeleteClick}>
@@ -186,16 +163,6 @@ const Accounts = () => {
         count={selectedAccounts.length} 
       />
 
-      {/* Bulk Email Modal */}
-      <BulkEmailModal
-        open={showBulkEmailModal}
-        onOpenChange={setShowBulkEmailModal}
-        recipients={bulkEmailRecipients}
-        onEmailsSent={() => {
-          setSelectedAccounts([]);
-          setShowBulkEmailModal(false);
-        }}
-      />
     </div>
   );
 };

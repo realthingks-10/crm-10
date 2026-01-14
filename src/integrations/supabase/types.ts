@@ -78,6 +78,7 @@ export type Database = {
           id: string
           industry: string | null
           last_activity_date: string | null
+          last_contacted_at: string | null
           modified_by: string | null
           notes: string | null
           phone: string | null
@@ -100,6 +101,7 @@ export type Database = {
           id?: string
           industry?: string | null
           last_activity_date?: string | null
+          last_contacted_at?: string | null
           modified_by?: string | null
           notes?: string | null
           phone?: string | null
@@ -122,6 +124,7 @@ export type Database = {
           id?: string
           industry?: string | null
           last_activity_date?: string | null
+          last_contacted_at?: string | null
           modified_by?: string | null
           notes?: string | null
           phone?: string | null
@@ -937,64 +940,103 @@ export type Database = {
         Row: {
           account_id: string | null
           body: string | null
+          bounce_reason: string | null
+          bounce_type: string | null
+          bounced_at: string | null
           click_count: number | null
           clicked_at: string | null
           contact_id: string | null
           created_at: string
           delivered_at: string | null
+          first_open_ip: string | null
           id: string
+          is_reply: boolean | null
+          is_valid_open: boolean | null
+          last_reply_at: string | null
           lead_id: string | null
+          message_id: string | null
           open_count: number | null
           opened_at: string | null
+          parent_email_id: string | null
           recipient_email: string
           recipient_name: string | null
+          replied_at: string | null
+          reply_count: number | null
           sender_email: string
           sent_at: string
           sent_by: string | null
           status: string
           subject: string
+          thread_id: string | null
+          unique_opens: number | null
           updated_at: string
         }
         Insert: {
           account_id?: string | null
           body?: string | null
+          bounce_reason?: string | null
+          bounce_type?: string | null
+          bounced_at?: string | null
           click_count?: number | null
           clicked_at?: string | null
           contact_id?: string | null
           created_at?: string
           delivered_at?: string | null
+          first_open_ip?: string | null
           id?: string
+          is_reply?: boolean | null
+          is_valid_open?: boolean | null
+          last_reply_at?: string | null
           lead_id?: string | null
+          message_id?: string | null
           open_count?: number | null
           opened_at?: string | null
+          parent_email_id?: string | null
           recipient_email: string
           recipient_name?: string | null
+          replied_at?: string | null
+          reply_count?: number | null
           sender_email: string
           sent_at?: string
           sent_by?: string | null
           status?: string
           subject: string
+          thread_id?: string | null
+          unique_opens?: number | null
           updated_at?: string
         }
         Update: {
           account_id?: string | null
           body?: string | null
+          bounce_reason?: string | null
+          bounce_type?: string | null
+          bounced_at?: string | null
           click_count?: number | null
           clicked_at?: string | null
           contact_id?: string | null
           created_at?: string
           delivered_at?: string | null
+          first_open_ip?: string | null
           id?: string
+          is_reply?: boolean | null
+          is_valid_open?: boolean | null
+          last_reply_at?: string | null
           lead_id?: string | null
+          message_id?: string | null
           open_count?: number | null
           opened_at?: string | null
+          parent_email_id?: string | null
           recipient_email?: string
           recipient_name?: string | null
+          replied_at?: string | null
+          reply_count?: number | null
           sender_email?: string
           sent_at?: string
           sent_by?: string | null
           status?: string
           subject?: string
+          thread_id?: string | null
+          unique_opens?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -1017,6 +1059,60 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_history_parent_email_id_fkey"
+            columns: ["parent_email_id"]
+            isOneToOne: false
+            referencedRelation: "email_history"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_replies: {
+        Row: {
+          body_preview: string | null
+          created_at: string | null
+          email_history_id: string
+          from_email: string
+          from_name: string | null
+          graph_message_id: string | null
+          id: string
+          received_at: string
+          subject: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          body_preview?: string | null
+          created_at?: string | null
+          email_history_id: string
+          from_email: string
+          from_name?: string | null
+          graph_message_id?: string | null
+          id?: string
+          received_at: string
+          subject?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          body_preview?: string | null
+          created_at?: string | null
+          email_history_id?: string
+          from_email?: string
+          from_name?: string | null
+          graph_message_id?: string | null
+          id?: string
+          received_at?: string
+          subject?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_replies_email_history_id_fkey"
+            columns: ["email_history_id"]
+            isOneToOne: false
+            referencedRelation: "email_history"
             referencedColumns: ["id"]
           },
         ]
@@ -1213,6 +1309,7 @@ export type Database = {
           company_name: string | null
           contact_owner: string | null
           contact_source: string | null
+          converted_from_contact_id: string | null
           country: string | null
           created_by: string | null
           created_time: string | null
@@ -1220,6 +1317,7 @@ export type Database = {
           email: string | null
           id: string
           industry: string | null
+          last_contacted_at: string | null
           lead_name: string
           lead_status: string | null
           linkedin: string | null
@@ -1234,6 +1332,7 @@ export type Database = {
           company_name?: string | null
           contact_owner?: string | null
           contact_source?: string | null
+          converted_from_contact_id?: string | null
           country?: string | null
           created_by?: string | null
           created_time?: string | null
@@ -1241,6 +1340,7 @@ export type Database = {
           email?: string | null
           id?: string
           industry?: string | null
+          last_contacted_at?: string | null
           lead_name: string
           lead_status?: string | null
           linkedin?: string | null
@@ -1255,6 +1355,7 @@ export type Database = {
           company_name?: string | null
           contact_owner?: string | null
           contact_source?: string | null
+          converted_from_contact_id?: string | null
           country?: string | null
           created_by?: string | null
           created_time?: string | null
@@ -1262,6 +1363,7 @@ export type Database = {
           email?: string | null
           id?: string
           industry?: string | null
+          last_contacted_at?: string | null
           lead_name?: string
           lead_status?: string | null
           linkedin?: string | null
@@ -1277,6 +1379,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_converted_from_contact_id_fkey"
+            columns: ["converted_from_contact_id"]
+            isOneToOne: true
+            referencedRelation: "contacts"
             referencedColumns: ["id"]
           },
         ]
@@ -1629,6 +1738,47 @@ export type Database = {
         }
         Relationships: []
       }
+      pending_bounce_checks: {
+        Row: {
+          check_after: string
+          check_result: string | null
+          checked: boolean | null
+          created_at: string | null
+          email_history_id: string | null
+          id: string
+          recipient_email: string
+          sender_email: string
+        }
+        Insert: {
+          check_after: string
+          check_result?: string | null
+          checked?: boolean | null
+          created_at?: string | null
+          email_history_id?: string | null
+          id?: string
+          recipient_email: string
+          sender_email: string
+        }
+        Update: {
+          check_after?: string
+          check_result?: string | null
+          checked?: boolean | null
+          created_at?: string | null
+          email_history_id?: string | null
+          id?: string
+          recipient_email?: string
+          sender_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_bounce_checks_email_history_id_fkey"
+            columns: ["email_history_id"]
+            isOneToOne: false
+            referencedRelation: "email_history"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pipeline_stages: {
         Row: {
           created_at: string
@@ -1896,6 +2046,39 @@ export type Database = {
         }
         Relationships: []
       }
+      task_reminder_logs: {
+        Row: {
+          created_at: string | null
+          email_sent_to: string | null
+          id: string
+          overdue_count: number | null
+          sent_at: string | null
+          sent_date: string
+          tasks_count: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email_sent_to?: string | null
+          id?: string
+          overdue_count?: number | null
+          sent_at?: string | null
+          sent_date: string
+          tasks_count?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          email_sent_to?: string | null
+          id?: string
+          overdue_count?: number | null
+          sent_at?: string | null
+          sent_date?: string
+          tasks_count?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       task_subtasks: {
         Row: {
           created_at: string
@@ -2058,6 +2241,42 @@ export type Database = {
           },
         ]
       }
+      user_access_cache: {
+        Row: {
+          cache_date: string
+          computed_at: string
+          id: string
+          permissions: Json
+          permissions_updated_at: string | null
+          profile: Json | null
+          role: string
+          role_assigned_at: string | null
+          user_id: string
+        }
+        Insert: {
+          cache_date?: string
+          computed_at?: string
+          id?: string
+          permissions?: Json
+          permissions_updated_at?: string | null
+          profile?: Json | null
+          role?: string
+          role_assigned_at?: string | null
+          user_id: string
+        }
+        Update: {
+          cache_date?: string
+          computed_at?: string
+          id?: string
+          permissions?: Json
+          permissions_updated_at?: string | null
+          profile?: Json | null
+          role?: string
+          role_assigned_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_preferences: {
         Row: {
           created_at: string | null
@@ -2206,10 +2425,20 @@ export type Database = {
         Args: { p_contact_id: string }
         Returns: number
       }
+      get_my_access_snapshot: {
+        Args: never
+        Returns: {
+          computed_at: string
+          permissions: Json
+          profile: Json
+          role: string
+        }[]
+      }
       get_user_role: { Args: { p_user_id: string }; Returns: string }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_current_user_admin_by_metadata: { Args: never; Returns: boolean }
       is_user_admin: { Args: { user_id?: string }; Returns: boolean }
+      is_user_manager: { Args: { user_id?: string }; Returns: boolean }
       log_data_access: {
         Args: {
           p_operation: string

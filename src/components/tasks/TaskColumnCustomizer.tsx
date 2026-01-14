@@ -19,7 +19,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 interface TaskColumnCustomizerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onColumnsChange?: (columns: string[]) => void;
+  onColumnsChange?: (columns: string[], order?: string[]) => void;
 }
 
 interface ColumnConfig {
@@ -124,7 +124,7 @@ export const TaskColumnCustomizer = ({ open, onOpenChange, onColumnsChange }: Ta
       }
 
       toast({ title: 'Success', description: 'Column preferences saved' });
-      onColumnsChange?.(selectedColumns);
+      onColumnsChange?.(selectedColumns, columnOrder);
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error saving preferences:', error);

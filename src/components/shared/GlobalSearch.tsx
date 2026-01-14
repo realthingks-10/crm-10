@@ -310,11 +310,11 @@ export function GlobalSearch() {
                 const config = typeConfig[type as keyof typeof typeConfig];
                 const Icon = config.icon;
                 
-                return (
-                  <div key={type}>
-                    <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-muted/50 sticky top-0">
-                      {config.label}s
-                    </div>
+                  return (
+                    <div key={type}>
+                      <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-popover sticky top-0 z-10 border-b border-border/50">
+                        {config.label}s
+                      </div>
                     {items.map((result, idx) => {
                       const globalIndex = results.indexOf(result);
                       return (

@@ -21,22 +21,22 @@ interface DealColumnCustomizerProps {
   isSaving?: boolean;
 }
 
+// Removed region column - available from linked Account/Customer
 export const defaultDealColumns: DealColumnConfig[] = [
   { field: 'project_name', label: 'Project', visible: true, order: 0 },
   { field: 'customer_name', label: 'Customer', visible: true, order: 1 },
   { field: 'lead_name', label: 'Lead Name', visible: true, order: 2 },
-  { field: 'lead_owner', label: 'Lead Owner', visible: true, order: 3 },
-  { field: 'stage', label: 'Stage', visible: true, order: 4 },
-  { field: 'priority', label: 'Priority', visible: true, order: 5 },
-  { field: 'total_contract_value', label: 'Value', visible: true, order: 6 },
-  { field: 'probability', label: 'Probability', visible: true, order: 7 },
-  { field: 'expected_closing_date', label: 'Expected Close', visible: true, order: 8 },
-  { field: 'region', label: 'Region', visible: false, order: 9 },
-  { field: 'project_duration', label: 'Duration', visible: false, order: 10 },
-  { field: 'start_date', label: 'Start Date', visible: false, order: 11 },
-  { field: 'end_date', label: 'End Date', visible: false, order: 12 },
-  { field: 'proposal_due_date', label: 'Proposal Due', visible: false, order: 13 },
-  { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 14 },
+  { field: 'stage', label: 'Stage', visible: true, order: 3 },
+  { field: 'priority', label: 'Priority', visible: true, order: 4 },
+  { field: 'total_contract_value', label: 'Value', visible: true, order: 5 },
+  { field: 'probability', label: 'Probability', visible: true, order: 6 },
+  { field: 'expected_closing_date', label: 'Expected Close', visible: true, order: 7 },
+  { field: 'project_duration', label: 'Duration', visible: false, order: 8 },
+  { field: 'start_date', label: 'Start Date', visible: false, order: 9 },
+  { field: 'end_date', label: 'End Date', visible: false, order: 10 },
+  { field: 'proposal_due_date', label: 'Proposal Due', visible: false, order: 11 },
+  { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 12 },
+  { field: 'lead_owner', label: 'Lead Owner', visible: true, order: 13 },
 ];
 
 export const DealColumnCustomizer = ({ 
@@ -47,12 +47,32 @@ export const DealColumnCustomizer = ({
   onSave,
   isSaving = false,
 }: DealColumnCustomizerProps) => {
-  const [localColumns, setLocalColumns] = useState<DealColumnConfig[]>(columns);
+  // Initialize local columns only when dialog opens
+  const [localColumns, setLocalColumns] = useState<DealColumnConfig[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Sync local columns when props change
+  // Sync local columns only when dialog opens (not on every columns prop change)
   useEffect(() => {
-    setLocalColumns(columns);
-  }, [columns]);
+    if (open && !isInitialized) {
+      const existingFields = new Set(columns.map(c => c.field));
+      const missingColumns = defaultDealColumns.filter(dc => !existingFields.has(dc.field));
+      const validColumns = columns.filter(c => 
+        defaultDealColumns.some(dc => dc.field === c.field)
+      );
+      
+      if (missingColumns.length > 0 || validColumns.length !== columns.length) {
+        setLocalColumns([...validColumns, ...missingColumns]);
+      } else {
+        setLocalColumns(columns);
+      }
+      setIsInitialized(true);
+    }
+    
+    // Reset initialization flag when dialog closes
+    if (!open) {
+      setIsInitialized(false);
+    }
+  }, [open, columns, isInitialized]);
 
   const handleVisibilityChange = (field: string, visible: boolean) => {
     const updatedColumns = localColumns.map(col => 

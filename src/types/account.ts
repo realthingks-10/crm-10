@@ -20,6 +20,7 @@ export interface Account {
   modified_by?: string | null;
   deal_count?: number | null;
   contact_count?: number | null;
+  lead_count?: number | null;
   last_activity_date?: string | null;
 }
 

@@ -29,9 +29,10 @@ const EmailCenterPage = ({ defaultTab }: EmailCenterPageProps) => {
   }, [defaultTab]);
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6 w-full">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <div className="sticky top-0 z-10 bg-background pb-2 border-b border-border">
+          <TabsList className="grid w-full grid-cols-3 max-w-md">
           <TabsTrigger value="templates" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             <span className="sr-only sm:not-sr-only">Templates</span>
@@ -44,7 +45,8 @@ const EmailCenterPage = ({ defaultTab }: EmailCenterPageProps) => {
             <BarChart3 className="h-4 w-4" />
             <span className="sr-only sm:not-sr-only">Analytics</span>
           </TabsTrigger>
-        </TabsList>
+          </TabsList>
+        </div>
 
         <TabsContent value="templates" className="mt-6">
           <Suspense fallback={<SettingsLoadingSkeleton />}>

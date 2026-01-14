@@ -6,11 +6,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, Send, Loader2, Users, X } from "lucide-react";
+import { Mail, Send, Loader2, Users, X, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { RichTextEditor } from "@/components/shared/RichTextEditor";
+import { EMAIL_VARIABLES } from "@/utils/emailConstants";
+import { stripHtmlTags } from "@/utils/emailUtils";
+import { useQueryClient } from "@tanstack/react-query";
 
 export interface BulkEmailRecipient {
   id: string;
@@ -36,6 +39,7 @@ interface BulkEmailModalProps {
 export const BulkEmailModal = ({ open, onOpenChange, recipients, onEmailsSent }: BulkEmailModalProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [subject, setSubject] = useState("");
@@ -120,11 +124,18 @@ export const BulkEmailModal = ({ open, onOpenChange, recipients, onEmailsSent }:
     let successCount = 0;
     let failCount = 0;
 
+    const now = new Date().toISOString();
+    const contactIds: string[] = [];
+    const leadIds: string[] = [];
+    const accountIds: string[] = [];
+
     for (const recipient of validRecipients) {
       try {
         const personalizedSubject = replaceVariables(subject.trim(), recipient);
         const personalizedBody = replaceVariables(body.trim(), recipient);
 
+        // Pass entityType and entityId so send-email creates the email_history record
+        // with proper association - no need to create a duplicate record client-side
         const { data, error } = await supabase.functions.invoke('send-email', {
           body: {
             to: recipient.email,
@@ -132,24 +143,17 @@ export const BulkEmailModal = ({ open, onOpenChange, recipients, onEmailsSent }:
             subject: personalizedSubject,
             body: personalizedBody,
             from: senderEmail,
+            entityType: recipient.type,
+            entityId: recipient.id,
           },
         });
 
         if (error) throw error;
 
-        // Log email to history
-        await supabase.from('email_history').insert({
-          recipient_email: recipient.email!,
-          recipient_name: recipient.name,
-          subject: personalizedSubject,
-          body: personalizedBody,
-          sender_email: senderEmail,
-          sent_by: user?.id,
-          lead_id: recipient.type === 'lead' ? recipient.id : null,
-          contact_id: recipient.type === 'contact' ? recipient.id : null,
-          account_id: recipient.type === 'account' ? recipient.id : null,
-          status: 'sent',
-        });
+        // Track successful recipients by type for last_contacted_at update
+        if (recipient.type === 'contact') contactIds.push(recipient.id);
+        else if (recipient.type === 'lead') leadIds.push(recipient.id);
+        else if (recipient.type === 'account') accountIds.push(recipient.id);
 
         successCount++;
       } catch (error) {
@@ -160,9 +164,25 @@ export const BulkEmailModal = ({ open, onOpenChange, recipients, onEmailsSent }:
       setSendProgress(prev => ({ ...prev, sent: prev.sent + 1 }));
     }
 
+    // Update last_contacted_at for all successfully emailed recipients
+    if (contactIds.length > 0) {
+      await supabase.from('contacts').update({ last_contacted_at: now }).in('id', contactIds);
+    }
+    if (leadIds.length > 0) {
+      await supabase.from('leads').update({ last_contacted_at: now }).in('id', leadIds);
+    }
+    if (accountIds.length > 0) {
+      await supabase.from('accounts').update({ last_contacted_at: now }).in('id', accountIds);
+    }
+
     setIsSending(false);
 
     if (successCount > 0) {
+      // Invalidate caches so tables refresh immediately
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      
       toast({
         title: "Bulk email completed",
         description: `Successfully sent ${successCount} emails${failCount > 0 ? `, ${failCount} failed` : ''}`,
@@ -245,13 +265,24 @@ export const BulkEmailModal = ({ open, onOpenChange, recipients, onEmailsSent }:
 
           <div className="space-y-2">
             <Label htmlFor="body">Message</Label>
-            <Textarea
-              id="body"
+            <RichTextEditor
               value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Email message..."
-              rows={6}
+              onChange={setBody}
+              placeholder="Email message... Use {{name}} for personalization."
             />
+            <div className="flex flex-wrap gap-2 pt-1">
+              <span className="text-xs text-muted-foreground">Insert:</span>
+              {EMAIL_VARIABLES.slice(0, 3).map((v) => (
+                <Badge 
+                  key={v.variable}
+                  variant="outline" 
+                  className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors text-xs"
+                  onClick={() => setBody(prev => prev + v.variable)}
+                >
+                  {v.variable}
+                </Badge>
+              ))}
+            </div>
           </div>
 
           {isSending && (

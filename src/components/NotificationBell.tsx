@@ -114,12 +114,12 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
       <Button
         variant="outline"
         size={size === 'small' ? 'sm' : 'lg'}
-        className={`relative p-0 bg-white hover:bg-blue-50 rounded-full border-2 border-gray-300 hover:border-blue-400 shadow-md hover:shadow-lg transition-all duration-200 ${
+        className={`relative p-0 bg-background hover:bg-accent rounded-full border-2 border-border hover:border-primary/50 shadow-md hover:shadow-lg transition-all duration-200 ${
           size === 'small' ? 'h-8 w-8' : 'h-12 w-12'
         }`}
         onClick={() => setIsOpen(!isOpen)}
       >
-        <Bell className={`text-gray-700 hover:text-blue-600 transition-colors ${
+        <Bell className={`text-muted-foreground hover:text-primary transition-colors ${
           size === 'small' ? 'h-4 w-4' : 'h-6 w-6'
         }`} />
         {unreadCount > 0 && (
@@ -139,14 +139,14 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
       {/* Notifications Dropdown */}
       {isOpen && (
         <div 
-          className={`absolute right-0 ${placement === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'} w-96 bg-white rounded-lg shadow-xl border border-gray-200`}
+          className={`absolute right-0 ${placement === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'} w-96 bg-popover rounded-lg shadow-xl border border-border`}
           style={{ 
             zIndex: 10000
           }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+          <div className="flex items-center justify-between p-4 border-b border-border bg-muted/50 rounded-t-lg">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
               <Bell className="h-4 w-4" />
               Notifications
             </h3>
@@ -156,7 +156,7 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
                   variant="ghost"
                   size="sm"
                   onClick={handleMarkAllRead}
-                  className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                  className="text-xs text-primary hover:text-primary/80 hover:bg-primary/10"
                 >
                   <CheckCheck className="h-4 w-4 mr-1" />
                   Mark all read
@@ -166,7 +166,7 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsOpen(false)}
-                className="h-6 w-6 p-0 hover:bg-gray-200"
+                className="h-6 w-6 p-0 hover:bg-muted"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -176,19 +176,19 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
           {/* Notifications List */}
           <ScrollArea className="max-h-96">
             {notifications.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">
-                <Bell className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <div className="p-8 text-center text-muted-foreground">
+                <Bell className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
                 <p className="text-sm">No notifications yet</p>
-                <p className="text-xs text-gray-400 mt-1">You'll see updates about action items here</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">You'll see updates about action items here</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-border">
                 {notifications.map((notification) => (
                   <div
                     key={notification.id}
                     className={cn(
-                      "p-4 hover:bg-gray-50 cursor-pointer transition-colors relative group",
-                      notification.status === 'unread' && "bg-blue-50 border-l-4 border-l-blue-500"
+                      "p-4 hover:bg-accent cursor-pointer transition-colors relative group",
+                      notification.status === 'unread' && "bg-primary/5 border-l-4 border-l-primary"
                     )}
                     onClick={() => handleNotificationClick(notification)}
                   >
@@ -200,17 +200,17 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
                           </span>
                           <div className="flex-1">
                             <p className={cn(
-                              "text-sm text-gray-900 leading-relaxed",
+                              "text-sm text-foreground leading-relaxed",
                               notification.status === 'unread' && "font-semibold"
                             )}>
                               {notification.message}
                             </p>
                             <div className="flex items-center gap-2 mt-2">
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-muted-foreground">
                                 {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
                               </p>
                               {notification.status === 'unread' && (
-                                <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
+                                <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
                                   New
                                 </Badge>
                               )}
@@ -261,11 +261,11 @@ export const NotificationBell = ({ placement = 'down', size = 'large' }: Notific
 
           {/* Footer */}
           {notifications.length > 0 && (
-            <div className="p-3 border-t border-gray-200 text-center bg-gray-50 rounded-b-lg">
+            <div className="p-3 border-t border-border text-center bg-muted/50 rounded-b-lg">
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-100"
+                className="text-xs text-primary hover:text-primary/80 hover:bg-primary/10"
                 onClick={() => {
                   setIsOpen(false);
                   navigate('/notifications');

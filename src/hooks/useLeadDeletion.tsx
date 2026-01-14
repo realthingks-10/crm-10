@@ -32,44 +32,19 @@ export const useLeadDeletion = () => {
           
         if (notificationLeadError) {
           console.error('Error deleting notifications for leads:', notificationLeadError);
-          // Don't throw - continue with deletion as these are reference-based now
-        }
-
-        // Get action item IDs for cleanup
-        const { data: actionItems, error: actionItemsSelectError } = await supabase
-          .from('lead_action_items')
-          .select('id')
-          .in('lead_id', leadIds);
-        
-        if (actionItemsSelectError) {
-          console.error('Error selecting action items:', actionItemsSelectError);
           // Don't throw - continue with deletion
         }
 
-        const actionItemIds = actionItems?.map(item => item.id) || [];
-        
-        // Clean up notifications that reference action items
-        if (actionItemIds.length > 0) {
-          const { error: notificationActionError } = await supabase
-            .from('notifications')
-            .delete()
-            .in('action_item_id', actionItemIds);
-            
-          if (notificationActionError) {
-            console.error('Error deleting notifications for action items:', notificationActionError);
-            // Don't throw - continue with deletion as these are reference-based now
-          }
-        }
-
-        // Delete action items
-        const { error: actionItemsDeleteError } = await supabase
-          .from('lead_action_items')
-          .delete()
+        // Clean up tasks linked to these leads (optional - tasks can exist without parent)
+        // We don't delete tasks, just unlink them by setting lead_id to null
+        const { error: tasksUnlinkError } = await supabase
+          .from('tasks')
+          .update({ lead_id: null })
           .in('lead_id', leadIds);
-
-        if (actionItemsDeleteError) {
-          console.error('Error deleting lead action items:', actionItemsDeleteError);
-          // Don't throw - continue with deletion as these are reference-based now
+        
+        if (tasksUnlinkError) {
+          console.error('Error unlinking tasks from leads:', tasksUnlinkError);
+          // Don't throw - continue with deletion
         }
       }
 

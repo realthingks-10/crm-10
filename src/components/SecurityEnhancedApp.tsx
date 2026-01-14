@@ -1,7 +1,7 @@
-
 import React from 'react';
 import { SecurityProvider } from '@/components/SecurityProvider';
 import { AuthProvider } from '@/hooks/useAuth';
+import { PermissionsProvider } from '@/contexts/PermissionsContext';
 
 interface SecurityEnhancedAppProps {
   children: React.ReactNode;
@@ -10,9 +10,11 @@ interface SecurityEnhancedAppProps {
 const SecurityEnhancedApp = ({ children }: SecurityEnhancedAppProps) => {
   return (
     <AuthProvider>
-      <SecurityProvider>
-        {children}
-      </SecurityProvider>
+      <PermissionsProvider>
+        <SecurityProvider>
+          {children}
+        </SecurityProvider>
+      </PermissionsProvider>
     </AuthProvider>
   );
 };

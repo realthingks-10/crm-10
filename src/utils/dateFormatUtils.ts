@@ -127,6 +127,25 @@ export class DateFormatUtils {
         }
       }
 
+      // Handle DD-MM-YY format (2-digit year)
+      const ddmmyyMatch = trimmedValue.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
+      if (ddmmyyMatch) {
+        const [, day, month, shortYear] = ddmmyyMatch;
+        const fullYear = parseInt(shortYear) > 50 ? 1900 + parseInt(shortYear) : 2000 + parseInt(shortYear);
+        const parsedDate = new Date(fullYear, parseInt(month) - 1, parseInt(day));
+        if (!isNaN(parsedDate.getTime())) {
+          return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+      }
+
+      // Handle DD-MM-YY HH:mm format (2-digit year with time)
+      const ddmmyyTimeMatch = trimmedValue.match(/^(\d{1,2})-(\d{1,2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
+      if (ddmmyyTimeMatch) {
+        const [, day, month, shortYear, hours, minutes] = ddmmyyTimeMatch;
+        const fullYear = parseInt(shortYear) > 50 ? 1900 + parseInt(shortYear) : 2000 + parseInt(shortYear);
+        return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hours.padStart(2, '0')}:${minutes}:00`;
+      }
+
       // Handle DD/MM/YYYY format (primary format)
       const ddmmyyyySlashMatch = trimmedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (ddmmyyyySlashMatch) {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,15 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Deal, DealStage, DEAL_STAGES, STAGE_COLORS } from "@/types/deal";
-import { Search, Filter, X, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Briefcase } from "lucide-react";
+import { Search, Filter, X, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Briefcase, Edit3 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RowActionsDropdown, Edit, Trash2, CheckSquare } from "./RowActionsDropdown";
 import { format } from "date-fns";
+import { formatDateTimeStandard } from "@/utils/formatUtils";
 import { DealColumnCustomizer, DealColumnConfig, defaultDealColumns } from "./DealColumnCustomizer";
 import { BulkActionsBar } from "./BulkActionsBar";
 import { DealsAdvancedFilter, AdvancedFilterState } from "./DealsAdvancedFilter";
-import { TaskModal } from "./tasks/TaskModal";
-import { useTasks } from "@/hooks/useTasks";
+import { InlineEditCell } from "./InlineEditCell";
 
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
@@ -24,6 +25,8 @@ import { DeleteConfirmDialog } from "./shared/DeleteConfirmDialog";
 import { ClearFiltersButton } from "./shared/ClearFiltersButton";
 import { HighlightedText } from "./shared/HighlightedText";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
+import { moveFieldToEnd } from "@/utils/columnOrderUtils";
+import { getDealStageColor } from "@/utils/statusBadgeUtils";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -58,8 +61,8 @@ export const ListView = ({
     searchTerm: "",
     probabilityRange: [0, 100],
   }));
-  const [sortBy, setSortBy] = useState<string>("modified_at");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [sortBy, setSortBy] = useState<string>("deal_name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [selectedDeals, setSelectedDeals] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
@@ -82,10 +85,7 @@ export const ListView = ({
     onSelectionChange?.(Array.from(selectedDeals));
   }, [selectedDeals, onSelectionChange]);
   
-  // Task Modal state
-  const [taskModalOpen, setTaskModalOpen] = useState(false);
-  const [taskDealId, setTaskDealId] = useState<string | null>(null);
-  const { createTask } = useTasks();
+  const navigate = useNavigate();
 
   // Delete confirmation state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -94,13 +94,15 @@ export const ListView = ({
   // Column customizer state
   const [columnCustomizerOpen, setColumnCustomizerOpen] = useState(false);
 
-  // Fetch all profiles for lead owner dropdown
+  // Fetch all profiles for lead owner dropdown - use shared cache
   const { data: allProfiles = [] } = useQuery({
     queryKey: ['all-profiles'],
     queryFn: async () => {
       const { data } = await supabase.from('profiles').select('id, full_name');
       return data || [];
     },
+    staleTime: 10 * 60 * 1000, // 10 minutes - profiles rarely change
+    gcTime: 30 * 60 * 1000,
   });
 
   // Use column preferences hook for database persistence
@@ -115,14 +117,16 @@ export const ListView = ({
   });
 
   // Local state for optimistic updates
-  const [localColumns, setLocalColumns] = useState<DealColumnConfig[]>(savedColumns);
+  const [localColumns, setLocalColumns] = useState<DealColumnConfig[]>([]);
+  const [isColumnsInitialized, setIsColumnsInitialized] = useState(false);
 
-  // Sync local columns when saved columns load from DB
+  // Only initialize columns once when they first load from preferences
   useEffect(() => {
-    if (savedColumns) {
+    if (savedColumns.length > 0 && !isColumnsInitialized) {
       setLocalColumns(savedColumns);
+      setIsColumnsInitialized(true);
     }
-  }, [savedColumns]);
+  }, [savedColumns, isColumnsInitialized]);
 
   // Column width state
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
@@ -159,34 +163,11 @@ export const ListView = ({
 
   const formatDate = (date: string | undefined) => {
     if (!date) return '-';
-    try {
-      return format(new Date(date), 'dd/MM/yyyy');
-    } catch {
-      return '-';
-    }
+    return formatDateTimeStandard(date) || '-';
   };
 
-  // Stage badge styling (matching Accounts module)
-  const getStageBadgeClasses = (stage?: string) => {
-    switch (stage) {
-      case 'Won':
-        return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 border-emerald-200';
-      case 'Dropped':
-        return 'bg-gray-100 text-gray-600 dark:bg-gray-800/30 dark:text-gray-400 border-gray-200';
-      case 'Lead':
-        return 'bg-slate-100 text-slate-700 dark:bg-slate-800/30 dark:text-slate-300 border-slate-200';
-      case 'Qualified':
-        return 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200';
-      case 'Discussions':
-        return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 border-amber-200';
-      case 'Offered':
-        return 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 border-purple-200';
-      case 'RFQ':
-        return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 border-indigo-200';
-      default:
-        return 'bg-muted text-muted-foreground border-border';
-    }
-  };
+  // Use shared stage badge styling from utilities
+  const getStageBadgeClasses = (stage?: string) => getDealStageColor(stage);
 
   // Generate initials from project name
   const getProjectInitials = (name: string) => {
@@ -305,6 +286,43 @@ export const ListView = ({
   };
 
   const handleInlineEdit = async (dealId: string, field: string, value: any) => {
+    // Validation
+    if (field === 'probability') {
+      const numValue = Number(value);
+      if (isNaN(numValue) || numValue < 0 || numValue > 100) {
+        toast({
+          title: "Validation error",
+          description: "Probability must be between 0 and 100",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
+    if (field === 'priority') {
+      const numValue = Number(value);
+      if (isNaN(numValue) || numValue < 1 || numValue > 5) {
+        toast({
+          title: "Validation error",
+          description: "Priority must be between 1 and 5",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
+    if (['total_contract_value', 'total_revenue'].includes(field)) {
+      const numValue = Number(value);
+      if (isNaN(numValue) || numValue < 0) {
+        toast({
+          title: "Validation error",
+          description: "Amount must be a positive number",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
     try {
       await onUpdateDeal(dealId, { [field]: value });
       toast({
@@ -324,19 +342,40 @@ export const ListView = ({
     if (field === 'stage') return 'stage';
     if (field === 'priority') return 'priority';
     if (field === 'lead_owner') return 'userSelect';
-    if (['total_contract_value', 'total_revenue'].includes(field)) return 'currency';
-    if (['expected_closing_date', 'start_date', 'end_date', 'proposal_due_date'].includes(field)) return 'date';
+    if (['total_contract_value', 'total_revenue', 'quarterly_revenue_q1', 'quarterly_revenue_q2', 'quarterly_revenue_q3', 'quarterly_revenue_q4'].includes(field)) return 'currency';
+    if (['expected_closing_date', 'start_date', 'end_date', 'proposal_due_date', 'rfq_received_date', 'signed_contract_date', 'implementation_start_date'].includes(field)) return 'date';
     if (['probability', 'project_duration'].includes(field)) return 'number';
+    if (['handoff_status', 'rfq_status', 'is_recurring', 'relationship_strength', 'region', 'decision_maker_level'].includes(field)) return 'select';
     return 'text';
   };
 
   const getFieldOptions = (field: string): string[] => {
+    if (field === 'handoff_status') {
+      return ['Not Started', 'In Progress', 'Complete'];
+    }
+    if (field === 'rfq_status') {
+      return ['Drafted', 'Submitted', 'Rejected', 'Accepted'];
+    }
+    if (field === 'is_recurring') {
+      return ['Yes', 'No', 'Unclear'];
+    }
+    if (field === 'relationship_strength') {
+      return ['Low', 'Medium', 'High'];
+    }
+    if (field === 'decision_maker_level') {
+      return ['Executive', 'Director', 'Manager', 'Individual Contributor'];
+    }
+    if (field === 'region') {
+      const regions = [...new Set(deals.map(d => d.region).filter(Boolean))] as string[];
+      return regions.length > 0 ? regions : ['North', 'South', 'East', 'West', 'Central'];
+    }
     return [];
   };
 
-  const visibleColumns = localColumns
-    .filter(col => col.visible)
-    .sort((a, b) => a.order - b.order);
+  const visibleColumns = moveFieldToEnd(
+    localColumns.filter((col) => col.visible).sort((a, b) => a.order - b.order),
+    "lead_owner",
+  );
 
   // Generate available options for multi-select filters
   const availableOptions = useMemo(() => {
@@ -403,32 +442,33 @@ export const ListView = ({
              matchesPriorities && matchesProbabilities && matchesHandoffStatuses && matchesProbabilityRange;
     })
     .sort((a, b) => {
-      let aValue: any;
-      let bValue: any;
+      const aValue = a[sortBy as keyof Deal];
+      const bValue = b[sortBy as keyof Deal];
 
-      // Get the values for the sort field
-      if (['priority', 'probability', 'project_duration'].includes(sortBy)) {
-        aValue = a[sortBy as keyof Deal] || 0;
-        bValue = b[sortBy as keyof Deal] || 0;
-      } else if (['total_contract_value', 'total_revenue'].includes(sortBy)) {
-        aValue = a[sortBy as keyof Deal] || 0;
-        bValue = b[sortBy as keyof Deal] || 0;
-      } else if (['expected_closing_date', 'start_date', 'end_date', 'created_at', 'modified_at', 'proposal_due_date'].includes(sortBy)) {
-        const aDateValue = a[sortBy as keyof Deal];
-        const bDateValue = b[sortBy as keyof Deal];
-        aValue = new Date(typeof aDateValue === 'string' ? aDateValue : 0);
-        bValue = new Date(typeof bDateValue === 'string' ? bDateValue : 0);
-      } else {
-        // String fields
-        aValue = String(a[sortBy as keyof Deal] || '').toLowerCase();
-        bValue = String(b[sortBy as keyof Deal] || '').toLowerCase();
+      // Handle null/undefined - push to end
+      if (aValue == null && bValue == null) return 0;
+      if (aValue == null) return sortOrder === 'asc' ? 1 : -1;
+      if (bValue == null) return sortOrder === 'asc' ? -1 : 1;
+
+      // Numeric fields
+      if (['priority', 'probability', 'project_duration', 'total_contract_value', 'total_revenue', 'quarterly_revenue_q1', 'quarterly_revenue_q2', 'quarterly_revenue_q3', 'quarterly_revenue_q4'].includes(sortBy)) {
+        const numA = Number(aValue) || 0;
+        const numB = Number(bValue) || 0;
+        return sortOrder === 'asc' ? numA - numB : numB - numA;
       }
 
-      if (sortOrder === "asc") {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-      } else {
-        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+      // Date fields
+      if (['expected_closing_date', 'start_date', 'end_date', 'created_at', 'modified_at', 'proposal_due_date', 'rfq_received_date', 'signed_contract_date', 'implementation_start_date'].includes(sortBy)) {
+        const dateA = new Date(String(aValue)).getTime();
+        const dateB = new Date(String(bValue)).getTime();
+        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
       }
+
+      // String fields - use localeCompare for proper sorting
+      const strA = String(aValue);
+      const strB = String(bValue);
+      const comparison = strA.localeCompare(strB, undefined, { sensitivity: 'base' });
+      return sortOrder === 'asc' ? comparison : -comparison;
     });
 
   // Pagination
@@ -475,8 +515,15 @@ export const ListView = ({
   const selectedDealObjects = deals.filter(deal => selectedDeals.has(deal.id));
 
   const handleCreateTask = (deal: Deal) => {
-    setTaskDealId(deal.id);
-    setTaskModalOpen(true);
+    const params = new URLSearchParams({
+      create: '1',
+      module: 'deals',
+      recordId: deal.id,
+      recordName: encodeURIComponent(deal.project_name || deal.deal_name || 'Deal'),
+      return: '/deals',
+      returnViewId: deal.id,
+    });
+    navigate(`/tasks?${params.toString()}`);
   };
 
   // Listen for column customizer open event from header
@@ -508,9 +555,9 @@ export const ListView = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Lead Owners</SelectItem>
-              {availableOptions.leadOwners.map((owner) => (
-                <SelectItem key={owner} value={owner}>
-                  {owner}
+              {availableOptions.leadOwners.map((ownerId) => (
+                <SelectItem key={ownerId} value={ownerId}>
+                  {displayNames[ownerId] || ownerId}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -544,11 +591,11 @@ export const ListView = ({
       </div>
 
       <Card className="flex-1 min-h-0 flex flex-col">
-        <div className="relative overflow-auto flex-1">
+        <div className="relative overflow-auto flex-1 min-h-0">
         <Table ref={tableRef} className="w-full">
           <TableHeader>
-            <TableRow className="sticky top-0 z-20 bg-muted border-b-2">
-              <TableHead className="w-12 min-w-12 text-center font-bold text-foreground">
+            <TableRow className="sticky top-0 z-20 bg-muted border-b-2 shadow-sm">
+              <TableHead className="w-12 min-w-12 text-center font-bold text-foreground bg-muted">
                 <Checkbox
                   checked={selectedDeals.size === paginatedDeals.length && paginatedDeals.length > 0}
                   onCheckedChange={handleSelectAll}
@@ -558,7 +605,7 @@ export const ListView = ({
               {visibleColumns.map(column => (
                 <TableHead 
                   key={column.field} 
-                  className="font-bold text-foreground px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors relative whitespace-nowrap"
+                  className="font-bold text-foreground px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors relative whitespace-nowrap bg-muted"
                   style={{ 
                     width: `${columnWidths[column.field] || 120}px`,
                     minWidth: `${columnWidths[column.field] || 120}px`,
@@ -573,10 +620,10 @@ export const ListView = ({
                     }
                   }}
                 >
-                  <div className="flex items-center justify-center gap-2 pr-4 text-foreground font-bold">
+                  <div className="flex items-center justify-center gap-1 pr-4 text-foreground font-bold">
                     {column.label}
                     {sortBy === column.field && (
-                      sortOrder === "asc" ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 flex-shrink-0" /> : <ArrowDown className="w-3 h-3 flex-shrink-0" />
                     )}
                   </div>
                   <div
@@ -588,7 +635,7 @@ export const ListView = ({
                   />
                 </TableHead>
               ))}
-              <TableHead className="w-32 text-center font-bold text-foreground px-4 py-3">Actions</TableHead>
+              <TableHead className="w-32 text-center font-bold text-foreground px-4 py-3 bg-muted">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -610,7 +657,7 @@ export const ListView = ({
               paginatedDeals.map((deal) => (
                 <TableRow 
                   key={deal.id} 
-                  className={`hover:bg-muted/20 border-b group ${selectedDeals.has(deal.id) ? 'bg-muted/30' : ''}`}
+                  className={`hover:bg-muted/30 border-b group transition-colors ${selectedDeals.has(deal.id) ? 'bg-primary/5' : ''}`}
                   data-state={selectedDeals.has(deal.id) ? "selected" : undefined}
                 >
                   <TableCell onClick={(e) => e.stopPropagation()} className="text-center px-4 py-3">
@@ -624,7 +671,7 @@ export const ListView = ({
                   {visibleColumns.map(column => (
                     <TableCell 
                       key={column.field} 
-                      className="text-left px-4 py-3 align-middle whitespace-nowrap overflow-hidden text-ellipsis"
+                      className="text-center px-2 py-1 align-middle whitespace-nowrap overflow-hidden"
                       style={{ 
                         width: `${columnWidths[column.field] || 120}px`,
                         minWidth: `${columnWidths[column.field] || 120}px`,
@@ -632,65 +679,36 @@ export const ListView = ({
                       }}
                     >
                       {column.field === 'project_name' || column.field === 'deal_name' ? (
-                        deal[column.field as keyof Deal] ? (
+                        <div className="group flex items-center gap-1">
                           <button 
                             onClick={() => onDealClick(deal)}
                             className="text-primary hover:underline font-medium text-left truncate"
-                            title={deal[column.field as keyof Deal]?.toString()}
+                            title={deal[column.field as keyof Deal]?.toString() || 'Click to view'}
                           >
-                            <HighlightedText text={deal[column.field as keyof Deal]?.toString() || ''} highlight={searchTerm} />
+                            <HighlightedText text={deal[column.field as keyof Deal]?.toString() || '-'} highlight={searchTerm} />
                           </button>
-                        ) : (
-                          <span className="text-center text-muted-foreground w-full block">-</span>
-                        )
-                      ) : column.field === 'customer_name' ? (
-                        <span className={`truncate block ${!deal.customer_name ? 'text-center text-muted-foreground' : ''}`}>
-                          {deal.customer_name ? <HighlightedText text={deal.customer_name} highlight={searchTerm} /> : '-'}
-                        </span>
-                      ) : column.field === 'lead_name' ? (
-                        <span className={`truncate block ${!deal.lead_name ? 'text-center text-muted-foreground' : ''}`}>
-                          {deal.lead_name ? <HighlightedText text={deal.lead_name} highlight={searchTerm} /> : '-'}
-                        </span>
-                      ) : column.field === 'stage' ? (
-                        deal.stage ? (
-                          <Badge variant="outline" className={`whitespace-nowrap ${getStageBadgeClasses(deal.stage)}`}>
-                            {deal.stage}
-                          </Badge>
-                        ) : <span className="text-center text-muted-foreground block">-</span>
-                      ) : column.field === 'priority' ? (
-                        <span className={`truncate block ${!deal.priority ? 'text-center text-muted-foreground' : ''}`}>
-                          {deal.priority ? `${deal.priority} (${getPriorityLabel(deal.priority)})` : '-'}
-                        </span>
-                      ) : column.field === 'total_contract_value' || column.field === 'total_revenue' ? (
-                        deal[column.field as keyof Deal] ? (
-                          <span className="font-medium">{formatCurrency(deal[column.field as keyof Deal] as number, deal.currency_type)}</span>
-                        ) : (
-                          <span className="text-center text-muted-foreground w-full block">-</span>
-                        )
-                      ) : column.field === 'probability' ? (
-                        <span className={`${
-                          deal.probability != null ? (
-                            (deal.probability || 0) >= 70 ? 'font-medium text-green-600 dark:text-green-400' : 
-                            (deal.probability || 0) >= 40 ? 'font-medium text-amber-600 dark:text-amber-400' : 
-                            'font-medium text-muted-foreground'
-                          ) : 'text-center text-muted-foreground'
-                        }`}>
-                          {deal.probability != null ? `${deal.probability}%` : '-'}
-                        </span>
-                      ) : column.field === 'expected_closing_date' || column.field === 'start_date' || column.field === 'end_date' || column.field === 'proposal_due_date' ? (
-                        <span className={`truncate block ${!deal[column.field as keyof Deal] ? 'text-center text-muted-foreground' : ''}`}>{formatDate(deal[column.field as keyof Deal] as string)}</span>
-                      ) : column.field === 'lead_owner' ? (
-                        <span className={`truncate block ${!deal.lead_owner ? 'text-center text-muted-foreground' : ''}`}>
-                          {deal.lead_owner || '-'}
-                        </span>
-                      ) : column.field === 'region' ? (
-                        <span className={`truncate block ${!deal.region ? 'text-center text-muted-foreground' : ''}`}>{deal.region || '-'}</span>
-                      ) : column.field === 'project_duration' ? (
-                        <span className={`truncate block ${!deal.project_duration ? 'text-center text-muted-foreground' : ''}`}>{deal.project_duration ? `${deal.project_duration} months` : '-'}</span>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-0.5 hover:bg-muted rounded"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDealClick(deal);
+                            }}
+                            title="Edit"
+                          >
+                            <Edit3 className="w-3 h-3 text-muted-foreground" />
+                          </button>
+                        </div>
                       ) : (
-                        <span title={deal[column.field as keyof Deal]?.toString() || '-'} className={`truncate block ${!deal[column.field as keyof Deal] ? 'text-center text-muted-foreground' : ''}`}>
-                          {deal[column.field as keyof Deal]?.toString() || '-'}
-                        </span>
+                        <InlineEditCell
+                          value={deal[column.field as keyof Deal]}
+                          field={column.field}
+                          dealId={deal.id}
+                          onSave={handleInlineEdit}
+                          type={getFieldType(column.field)}
+                          options={getFieldOptions(column.field)}
+                          userOptions={allProfiles}
+                          currencyType={deal.currency_type}
+                        />
                       )}
                     </TableCell>
                   ))}
@@ -728,21 +746,9 @@ export const ListView = ({
           </TableBody>
           </Table>
         </div>
-      </Card>
-
-      {/* Bulk Actions */}
-      {selectedDeals.size > 0 && (
-        <BulkActionsBar
-          selectedCount={selectedDeals.size}
-          onDelete={handleBulkDelete}
-          onExport={handleBulkExport}
-          onClearSelection={() => setSelectedDeals(new Set())}
-        />
-      )}
-
-      {/* Pagination */}
-      {totalPages > 0 && (
-        <div className="flex items-center justify-between">
+        
+        {/* Pagination */}
+        <div className="flex items-center justify-between p-4 border-t flex-shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">
               Showing {filteredAndSortedDeals.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredAndSortedDeals.length)} of {filteredAndSortedDeals.length} deals
@@ -753,7 +759,7 @@ export const ListView = ({
               variant="outline" 
               size="sm" 
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} 
-              disabled={currentPage === 1}
+              disabled={currentPage === 1 || totalPages === 0}
             >
               <ChevronLeft className="w-4 h-4" />
               Previous
@@ -772,14 +778,17 @@ export const ListView = ({
             </Button>
           </div>
         </div>
-      )}
+      </Card>
 
-      <TaskModal
-        open={taskModalOpen}
-        onOpenChange={setTaskModalOpen}
-        onSubmit={createTask}
-        context={taskDealId ? { module: 'deals', recordId: taskDealId, locked: true } : undefined}
-      />
+      {/* Bulk Actions */}
+      {selectedDeals.size > 0 && (
+        <BulkActionsBar
+          selectedCount={selectedDeals.size}
+          onDelete={handleBulkDelete}
+          onExport={handleBulkExport}
+          onClearSelection={() => setSelectedDeals(new Set())}
+        />
+      )}
 
       <DealColumnCustomizer
         open={columnCustomizerOpen}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Phone, 
@@ -14,9 +14,11 @@ import {
   Clock,
   Loader2,
   UserPlus,
-  Video
+  Video,
+  Plus,
 } from "lucide-react";
 import { format } from "date-fns";
+import { ActivityDetailModal } from "@/components/shared/ActivityDetailModal";
 
 interface TimelineItem {
   id: string;
@@ -30,6 +32,7 @@ interface TimelineItem {
 
 interface AccountActivityTimelineProps {
   accountId: string;
+  onAddActivity?: () => void;
 }
 
 const getActivityIcon = (type: string) => {
@@ -54,9 +57,10 @@ const getActivityColor = (type: string) => {
   }
 };
 
-export const AccountActivityTimeline = ({ accountId }: AccountActivityTimelineProps) => {
+export const AccountActivityTimeline = ({ accountId, onAddActivity }: AccountActivityTimelineProps) => {
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedActivity, setSelectedActivity] = useState<TimelineItem | null>(null);
 
   useEffect(() => {
     fetchTimeline();
@@ -65,50 +69,49 @@ export const AccountActivityTimeline = ({ accountId }: AccountActivityTimelinePr
   const fetchTimeline = async () => {
     setLoading(true);
     try {
-      // Fetch activities
-      const { data: activities } = await supabase
-        .from('account_activities')
-        .select('*')
-        .eq('account_id', accountId)
-        .order('activity_date', { ascending: false });
+      // Fetch all data in parallel for better performance
+      const [activitiesRes, contactsRes, dealsRes, leadsRes] = await Promise.all([
+        supabase
+          .from('account_activities')
+          .select('id, subject, description, activity_type, activity_date, outcome, duration_minutes')
+          .eq('account_id', accountId)
+          .order('activity_date', { ascending: false })
+          .limit(50),
+        supabase
+          .from('contacts')
+          .select('id, contact_name, email, position, created_time')
+          .eq('account_id', accountId)
+          .order('created_time', { ascending: false })
+          .limit(50),
+        supabase
+          .from('deals')
+          .select('id, deal_name, stage, total_contract_value, created_at')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('leads')
+          .select('id, lead_name, lead_status, company_name, created_time')
+          .eq('account_id', accountId)
+          .order('created_time', { ascending: false })
+          .limit(50)
+      ]);
 
-      // Fetch contacts
-      const { data: contacts } = await supabase
-        .from('contacts')
-        .select('id, contact_name, email, position, created_time')
-        .eq('account_id', accountId)
-        .order('created_time', { ascending: false });
+      const activities = activitiesRes.data || [];
+      const contacts = contactsRes.data || [];
+      const deals = dealsRes.data || [];
+      const leads = leadsRes.data || [];
 
-      // Fetch deals by account_id (proper FK relationship)
-      const { data: dealData } = await supabase
-        .from('deals')
-        .select('id, deal_name, stage, total_contract_value, created_at')
-        .eq('account_id', accountId)
-        .order('created_at', { ascending: false });
-      const deals = dealData || [];
-
-      // Fetch leads associated with this account
-      const { data: leadData } = await supabase
-        .from('leads')
-        .select('id, lead_name, lead_status, company_name, created_time')
-        .eq('account_id', accountId)
-        .order('created_time', { ascending: false });
-      const leads = leadData || [];
-
-      // Fetch meetings for contacts linked to this account
-      const { data: accountContacts } = await supabase
-        .from('contacts')
-        .select('id')
-        .eq('account_id', accountId);
-      
+      // Fetch meetings using contact IDs from the contacts we already fetched (no duplicate query)
       let meetings: any[] = [];
-      if (accountContacts && accountContacts.length > 0) {
-        const contactIds = accountContacts.map(c => c.id);
+      const contactIds = contacts.map(c => c.id);
+      if (contactIds.length > 0) {
         const { data: meetingData } = await supabase
           .from('meetings')
           .select('id, subject, start_time, status, outcome')
           .in('contact_id', contactIds)
-          .order('start_time', { ascending: false });
+          .order('start_time', { ascending: false })
+          .limit(50);
         meetings = meetingData || [];
       }
 
@@ -116,7 +119,7 @@ export const AccountActivityTimeline = ({ accountId }: AccountActivityTimelinePr
       const items: TimelineItem[] = [];
 
       // Add activities
-      (activities || []).forEach(activity => {
+      activities.forEach(activity => {
         items.push({
           id: `activity-${activity.id}`,
           type: 'activity',
@@ -126,13 +129,14 @@ export const AccountActivityTimeline = ({ accountId }: AccountActivityTimelinePr
           icon: getActivityIcon(activity.activity_type),
           metadata: {
             type: activity.activity_type,
-            outcome: activity.outcome || ''
+            outcome: activity.outcome || '',
+            duration: activity.duration_minutes?.toString() || ''
           }
         });
       });
 
       // Add contacts
-      (contacts || []).forEach(contact => {
+      contacts.forEach(contact => {
         items.push({
           id: `contact-${contact.id}`,
           type: 'contact',
@@ -212,57 +216,78 @@ export const AccountActivityTimeline = ({ accountId }: AccountActivityTimelinePr
   }
 
   return (
-    <ScrollArea className="h-[400px]">
-      <div className="relative pl-6">
-        {/* Timeline line */}
-        <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-border" />
-        
-        <div className="space-y-4">
-          {timeline.map((item, index) => (
-            <div key={item.id} className="relative">
-              {/* Timeline dot */}
-              <div className={`absolute -left-4 mt-1.5 w-4 h-4 rounded-full flex items-center justify-center ${
-                item.type === 'activity' 
-                  ? getActivityColor(item.metadata?.type || '')
-                  : item.type === 'contact'
-                  ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
-                  : item.type === 'deal'
-                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300'
-                  : item.type === 'lead'
-                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
-                  : item.type === 'meeting'
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-              }`}>
-                {item.icon}
-              </div>
-              
-              <div className="ml-4 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{item.title}</p>
-                    {item.description && (
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                        {item.description}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className="text-xs text-muted-foreground">
-                      {format(new Date(item.date), 'dd/MM/yyyy')}
-                    </span>
-                    {item.type === 'activity' && item.metadata?.type && (
-                      <Badge variant="outline" className="text-xs capitalize">
-                        {item.metadata.type}
-                      </Badge>
-                    )}
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium text-muted-foreground">Activity Timeline</h3>
+        {onAddActivity && (
+          <Button size="sm" variant="outline" onClick={onAddActivity}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Activity
+          </Button>
+        )}
+      </div>
+      <ScrollArea className="h-[450px] max-h-[60vh]">
+        <div className="relative pl-6">
+          {/* Timeline line */}
+          <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-border" />
+          
+          <div className="space-y-4">
+            {timeline.map((item) => (
+              <div 
+                key={item.id} 
+                className="relative cursor-pointer"
+                onClick={() => setSelectedActivity(item)}
+              >
+                {/* Timeline dot */}
+                <div className={`absolute -left-4 mt-1.5 w-4 h-4 rounded-full flex items-center justify-center ${
+                  item.type === 'activity' 
+                    ? getActivityColor(item.metadata?.type || '')
+                    : item.type === 'contact'
+                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                    : item.type === 'deal'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300'
+                    : item.type === 'lead'
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+                    : item.type === 'meeting'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                    : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                }`}>
+                  {item.icon}
+                </div>
+                
+                <div className="ml-4 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{item.title}</p>
+                      {item.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          {item.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date(item.date), 'dd/MM/yyyy')}
+                      </span>
+                      {item.type === 'activity' && item.metadata?.type && (
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {item.metadata.type}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-    </ScrollArea>
+      </ScrollArea>
+
+      <ActivityDetailModal
+        open={!!selectedActivity}
+        onOpenChange={(open) => !open && setSelectedActivity(null)}
+        activity={selectedActivity}
+      />
+    </>
   );
 };

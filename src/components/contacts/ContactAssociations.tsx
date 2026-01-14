@@ -132,7 +132,7 @@ export const ContactAssociations = ({ contactId, contactName, accountId }: Conta
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* Deals */}
         <Card>
           <CardHeader className="pb-3">

@@ -1,63 +1,45 @@
-import { Mail, MousePointer, TrendingUp } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
+import { Mail, AlertTriangle } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface ContactEmailTrackingProps {
   emailOpens: number;
-  emailClicks: number;
-  engagementScore: number;
+  showWarning?: boolean;
 }
 
 export const ContactEmailTracking = ({
   emailOpens,
-  emailClicks,
-  engagementScore,
+  showWarning = false,
 }: ContactEmailTrackingProps) => {
-  const openRate = emailOpens > 0 ? Math.min((emailOpens / 10) * 100, 100) : 0;
-  const clickRate = emailClicks > 0 && emailOpens > 0 ? (emailClicks / emailOpens) * 100 : 0;
+  if (showWarning && emailOpens > 0) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>
+            <div className="flex items-center gap-2 text-sm">
+              <Mail className="h-4 w-4 text-yellow-500" />
+              <span className="text-muted-foreground">Opens:</span>
+              <span className="font-semibold text-yellow-600">{emailOpens}</span>
+              <AlertTriangle className="h-3 w-3 text-yellow-500" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Some opens may be from automated email scanners</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
 
   return (
-    <div className="grid grid-cols-3 gap-4">
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Mail className="h-4 w-4 text-blue-500" />
-            Email Opens
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{emailOpens}</div>
-          <Progress value={openRate} className="mt-2 h-1" />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <MousePointer className="h-4 w-4 text-green-500" />
-            Email Clicks
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{emailClicks}</div>
-          <div className="text-xs text-muted-foreground mt-1">
-            {clickRate.toFixed(1)}% click rate
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-purple-500" />
-            Engagement
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{engagementScore}</div>
-          <Progress value={engagementScore} className="mt-2 h-1" />
-        </CardContent>
-      </Card>
+    <div className="flex items-center gap-2 text-sm">
+      <Mail className="h-4 w-4 text-blue-500" />
+      <span className="text-muted-foreground">Opens:</span>
+      <span className="font-semibold">{emailOpens}</span>
     </div>
   );
 };

@@ -3,15 +3,16 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 import { useMeetingsImportExport } from "@/hooks/useMeetingsImportExport";
+import { useColumnPreferences } from "@/hooks/useColumnPreferences";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Video, Trash2, Edit, Calendar, ArrowUpDown, ArrowUp, ArrowDown, List, CalendarDays, CheckCircle2, AlertCircle, UserX, CalendarClock, User, Columns, Upload, Download, X, Eye } from "lucide-react";
+import { Plus, Search, Video, Trash2, Edit, Calendar, ArrowUpDown, ArrowUp, ArrowDown, List, CalendarDays, CheckCircle2, AlertCircle, UserX, CalendarClock, User, Columns, Upload, Download, X, Eye, CheckSquare } from "lucide-react";
 import { RowActionsDropdown } from "@/components/RowActionsDropdown";
 import { HighlightedText } from "@/components/shared/HighlightedText";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -24,6 +25,7 @@ import { TablePagination } from "@/components/shared/TablePagination";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { getMeetingStatus } from "@/utils/meetingStatus";
+import { getMeetingStatusColor } from "@/utils/statusBadgeUtils";
 import { MeetingDetailModal } from "@/components/meetings/MeetingDetailModal";
 
 type SortColumn = 'subject' | 'date' | 'time' | 'lead_contact' | 'status' | null;
@@ -62,9 +64,8 @@ const Meetings = () => {
   const {
     toast
   } = useToast();
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [filteredMeetings, setFilteredMeetings] = useState<Meeting[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  // Removed filteredMeetings state - using sortedAndFilteredMeetings directly
   const [searchTerm, setSearchTerm] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
@@ -75,16 +76,41 @@ const Meetings = () => {
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [organizerFilter, setOrganizerFilter] = useState<string>("all");
-  const [sortColumn, setSortColumn] = useState<SortColumn>(null);
+  const [sortColumn, setSortColumn] = useState<SortColumn>('subject');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   
-  // Column customizer state
+  // Column customizer state with persistence
   const [showColumnCustomizer, setShowColumnCustomizer] = useState(false);
-  const [columns, setColumns] = useState<MeetingColumnConfig[]>(defaultMeetingColumns);
+  const { columns, saveColumns, isSaving } = useColumnPreferences({
+    moduleName: 'meetings',
+    defaultColumns: defaultMeetingColumns,
+  });
+  const [localColumns, setLocalColumns] = useState<MeetingColumnConfig[]>([]);
+  const [isColumnsInitialized, setIsColumnsInitialized] = useState(false);
+
+  // Only initialize columns once when they first load from preferences
+  useEffect(() => {
+    if (columns.length > 0 && !isColumnsInitialized) {
+      setLocalColumns(columns);
+      setIsColumnsInitialized(true);
+    }
+  }, [columns, isColumnsInitialized]);
+
+  const handleCreateTask = (meeting: Meeting) => {
+    const params = new URLSearchParams({
+      create: '1',
+      module: 'meetings',
+      recordId: meeting.id,
+      recordName: encodeURIComponent(meeting.subject || 'Meeting'),
+      return: '/meetings',
+      returnViewId: meeting.id,
+    });
+    navigate(`/tasks?${params.toString()}`);
+  };
 
   // Get owner parameter from URL - "me" means filter by current user
   const ownerParam = searchParams.get('owner');
@@ -111,6 +137,49 @@ const Meetings = () => {
     }
   }, [searchParams]);
 
+  // viewId effect is moved below the meetings query
+
+  // Fetch all profiles for organizer dropdown with caching
+  const { data: allProfiles = [] } = useQuery({
+    queryKey: ['all-profiles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('id, full_name');
+      return data || [];
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  // Fetch meetings with React Query caching
+  const { data: meetings = [], isLoading: loading, refetch: refetchMeetings } = useQuery({
+    queryKey: ['meetings'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('meetings').select(`
+          *,
+          leads:lead_id (lead_name),
+          contacts:contact_id (contact_name)
+        `).order('start_time', {
+        ascending: true
+      });
+      if (error) throw error;
+      return (data || []).map(meeting => ({
+        ...meeting,
+        lead_name: meeting.leads?.lead_name,
+        contact_name: meeting.contacts?.contact_name
+      })) as Meeting[];
+    },
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+
+  const fetchMeetings = () => {
+    refetchMeetings();
+  };
+
+  // Get organizer display names
+  const organizerIds = useMemo(() => {
+    return [...new Set(meetings.map(m => m.created_by).filter(Boolean))] as string[];
+  }, [meetings]);
+  const { displayNames: organizerNames } = useUserDisplayNames(organizerIds);
+
   // Handle viewId from URL (from global search)
   useEffect(() => {
     const viewId = searchParams.get('viewId');
@@ -119,7 +188,6 @@ const Meetings = () => {
       if (meetingToView) {
         setEditingMeeting(meetingToView);
         setShowModal(true);
-        // Clear the viewId from URL after opening
         setSearchParams(prev => {
           prev.delete('viewId');
           return prev;
@@ -127,58 +195,6 @@ const Meetings = () => {
       }
     }
   }, [searchParams, meetings, setSearchParams]);
-
-  // Fetch all profiles for organizer dropdown
-  const { data: allProfiles = [] } = useQuery({
-    queryKey: ['all-profiles'],
-    queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, full_name');
-      return data || [];
-    },
-  });
-
-  // Get organizer display names
-  const organizerIds = useMemo(() => {
-    return [...new Set(meetings.map(m => m.created_by).filter(Boolean))] as string[];
-  }, [meetings]);
-  const { displayNames: organizerNames } = useUserDisplayNames(organizerIds);
-
-  const fetchMeetings = async () => {
-    try {
-      setLoading(true);
-      const {
-        data,
-        error
-      } = await supabase.from('meetings').select(`
-          *,
-          leads:lead_id (lead_name),
-          contacts:contact_id (contact_name)
-        `).order('start_time', {
-        ascending: true
-      });
-      if (error) throw error;
-      const transformedData = (data || []).map(meeting => ({
-        ...meeting,
-        lead_name: meeting.leads?.lead_name,
-        contact_name: meeting.contacts?.contact_name
-      }));
-      setMeetings(transformedData);
-      setSelectedMeetings([]);
-    } catch (error) {
-      console.error('Error fetching meetings:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch meetings",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchMeetings();
-  }, []);
 
   const getEffectiveStatus = (meeting: Meeting) => {
     return getMeetingStatus(meeting);
@@ -194,10 +210,7 @@ const Meetings = () => {
   };
 
   const getSortIcon = (column: SortColumn) => {
-    if (sortColumn !== column) {
-      return <ArrowUpDown className="h-4 w-4 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />;
-    }
-    return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4 ml-1" /> : <ArrowDown className="h-4 w-4 ml-1" />;
+    return null; // Hide sort icons but keep sorting on click
   };
 
   const sortedAndFilteredMeetings = useMemo(() => {
@@ -245,17 +258,20 @@ const Meetings = () => {
     return filtered;
   }, [meetings, searchTerm, statusFilter, organizerFilter, sortColumn, sortDirection]);
 
-  useEffect(() => {
-    setFilteredMeetings(sortedAndFilteredMeetings);
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [sortedAndFilteredMeetings]);
+  // Reset to first page when filters change (without storing filtered in state)
+  const prevFilterKey = useRef('');
+  const filterKey = `${searchTerm}-${statusFilter}-${organizerFilter}`;
+  if (filterKey !== prevFilterKey.current) {
+    prevFilterKey.current = filterKey;
+    if (currentPage !== 1) setCurrentPage(1);
+  }
 
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredMeetings.length / ITEMS_PER_PAGE);
+  // Use sortedAndFilteredMeetings directly instead of storing in state
+  const totalPages = Math.ceil(sortedAndFilteredMeetings.length / ITEMS_PER_PAGE);
   const paginatedMeetings = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredMeetings.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredMeetings, currentPage]);
+    return sortedAndFilteredMeetings.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [sortedAndFilteredMeetings, currentPage]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -324,28 +340,16 @@ const Meetings = () => {
     return subject.split(' ').slice(0, 2).map(word => word.charAt(0).toUpperCase()).join('');
   };
 
-  // Generate consistent color from subject
+// Generate consistent vibrant color from subject
   const getAvatarColor = (name: string) => {
-    const colors = ['bg-slate-500', 'bg-slate-600', 'bg-zinc-500', 'bg-gray-500', 'bg-stone-500', 'bg-neutral-500', 'bg-slate-700', 'bg-zinc-600'];
+    const colors = ['bg-blue-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 
+      'bg-rose-600', 'bg-cyan-600', 'bg-indigo-600', 'bg-teal-600'];
     const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
     return colors[index];
   };
 
-  // Status badge styling matching Accounts module pattern
-  const getStatusBadgeClasses = (status: string) => {
-    switch (status) {
-      case 'scheduled':
-        return 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800';
-      case 'ongoing':
-        return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 border-amber-200 dark:border-amber-800';
-      case 'completed':
-        return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
-      case 'cancelled':
-        return 'bg-gray-100 text-gray-600 dark:bg-gray-800/30 dark:text-gray-400 border-gray-200 dark:border-gray-700';
-      default:
-        return 'bg-muted text-muted-foreground border-border';
-    }
-  };
+  // Use shared status badge styling from utilities
+  const getStatusBadgeClasses = (status: string) => getMeetingStatusColor(status);
 
   const getStatusBadge = (meeting: Meeting) => {
     const status = getEffectiveStatus(meeting);
@@ -367,22 +371,22 @@ const Meetings = () => {
       successful: {
         label: "Successful",
         icon: <CheckCircle2 className="h-3 w-3" />,
-        className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+        className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
       },
       follow_up_needed: {
         label: "Follow-up",
         icon: <AlertCircle className="h-3 w-3" />,
-        className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+        className: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 border-amber-200 dark:border-amber-800"
       },
       no_show: {
         label: "No-show",
         icon: <UserX className="h-3 w-3" />,
-        className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+        className: "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300 border-rose-200 dark:border-rose-800"
       },
       rescheduled: {
         label: "Rescheduled",
         icon: <CalendarClock className="h-3 w-3" />,
-        className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+        className: "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800"
       }
     };
     const config = outcomeConfig[outcome];
@@ -394,7 +398,7 @@ const Meetings = () => {
   };
 
   const isColumnVisible = (field: string) => {
-    const col = columns.find(c => c.field === field);
+    const col = localColumns.find(c => c.field === field);
     return col ? col.visible : true;
   };
 
@@ -423,14 +427,8 @@ const Meetings = () => {
     }
   };
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading meetings...</p>
-        </div>
-      </div>;
-  }
+  // Show skeleton instead of blocking full-screen loader
+  const showSkeleton = loading && meetings.length === 0;
 
   return <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Hidden file input for import */}
@@ -490,7 +488,7 @@ const Meetings = () => {
                     <Upload className="h-4 w-4 mr-2" />
                     {isImporting ? 'Importing...' : 'Import CSV'}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExport(filteredMeetings)} disabled={isExporting || filteredMeetings.length === 0}>
+                  <DropdownMenuItem onClick={() => handleExport(sortedAndFilteredMeetings)} disabled={isExporting || sortedAndFilteredMeetings.length === 0}>
                     <Download className="h-4 w-4 mr-2" />
                     {isExporting ? 'Exporting...' : 'Export CSV'}
                   </DropdownMenuItem>
@@ -517,11 +515,25 @@ const Meetings = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 min-h-0 overflow-auto px-4 pt-2 pb-4">
-        {viewMode === 'calendar' ? <MeetingsCalendarView meetings={filteredMeetings} onMeetingClick={meeting => {
-        setEditingMeeting(meeting);
-        setShowModal(true);
-      }} onMeetingUpdated={fetchMeetings} /> : <div className="space-y-3">
+      <div className="flex-1 min-h-0 overflow-hidden px-4 pt-2 pb-4 flex flex-col">
+        {showSkeleton ? (
+          <div className="space-y-4 flex-1">
+            <div className="h-10 bg-muted animate-pulse rounded" />
+            <div className="h-64 bg-muted animate-pulse rounded" />
+          </div>
+        ) : viewMode === 'calendar' ? (
+          <div className="flex-1 min-h-0 overflow-auto">
+            <MeetingsCalendarView
+              meetings={sortedAndFilteredMeetings}
+              onMeetingClick={(meeting) => {
+                setEditingMeeting(meeting);
+                setShowModal(true);
+              }}
+              onMeetingUpdated={fetchMeetings}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 flex-1 min-h-0">
             {/* Search and Bulk Actions */}
             <div className="flex items-center gap-4 flex-wrap">
               <div className="relative w-64">
@@ -578,11 +590,11 @@ const Meetings = () => {
 
             {/* Table */}
             <Card className="flex-1 min-h-0 flex flex-col">
-              <div className="relative overflow-auto flex-1">
+              <div className="relative overflow-auto flex-1 min-h-0">
               <Table>
                 <TableHeader>
-                  <TableRow className="sticky top-0 z-20 bg-muted border-b-2">
-                    <TableHead className="w-[50px] text-center font-bold text-foreground">
+                  <TableRow className="sticky top-0 z-20 bg-muted border-b-2 shadow-sm">
+                    <TableHead className="w-[50px] text-center font-bold text-foreground bg-muted">
                       <Checkbox checked={isAllSelected} ref={el => {
                     if (el) {
                       (el as any).indeterminate = isSomeSelected;
@@ -590,44 +602,44 @@ const Meetings = () => {
                   }} onCheckedChange={handleSelectAll} aria-label="Select all" />
                     </TableHead>
                     {isColumnVisible('subject') && (
-                      <TableHead className="min-w-[200px] font-bold text-foreground px-4 py-3">
+                      <TableHead className="min-w-[200px] font-bold text-foreground px-4 py-3 bg-muted">
                         <button onClick={() => handleSort('subject')} className="group flex items-center gap-2 cursor-pointer hover:text-primary">
                           Subject {getSortIcon('subject')}
                         </button>
                       </TableHead>
                     )}
                     {isColumnVisible('date') && (
-                      <TableHead className="font-bold text-foreground px-4 py-3">
+                      <TableHead className="font-bold text-foreground px-4 py-3 bg-muted">
                         <button onClick={() => handleSort('date')} className="group flex items-center gap-2 cursor-pointer hover:text-primary">
                           Date {getSortIcon('date')}
                         </button>
                       </TableHead>
                     )}
                     {isColumnVisible('time') && (
-                      <TableHead className="font-bold text-foreground px-4 py-3">
+                      <TableHead className="font-bold text-foreground px-4 py-3 bg-muted">
                         <button onClick={() => handleSort('time')} className="group flex items-center gap-2 cursor-pointer hover:text-primary">
                           Time {getSortIcon('time')}
                         </button>
                       </TableHead>
                     )}
                     {isColumnVisible('lead_contact') && (
-                      <TableHead className="font-bold text-foreground px-4 py-3">
+                      <TableHead className="font-bold text-foreground px-4 py-3 bg-muted">
                         <button onClick={() => handleSort('lead_contact')} className="group flex items-center gap-2 cursor-pointer hover:text-primary">
                           Lead/Contact {getSortIcon('lead_contact')}
                         </button>
                       </TableHead>
                     )}
                     {isColumnVisible('status') && (
-                      <TableHead className="font-bold text-foreground px-4 py-3">
+                      <TableHead className="font-bold text-foreground px-4 py-3 bg-muted">
                         <button onClick={() => handleSort('status')} className="group flex items-center gap-2 cursor-pointer hover:text-primary">
                           Status {getSortIcon('status')}
                         </button>
                       </TableHead>
                     )}
-                    {isColumnVisible('outcome') && <TableHead className="font-bold text-foreground px-4 py-3">Outcome</TableHead>}
-                    {isColumnVisible('join_url') && <TableHead className="font-bold text-foreground px-4 py-3">Join URL</TableHead>}
-                    {isColumnVisible('organizer') && <TableHead className="font-bold text-foreground px-4 py-3">Organizer</TableHead>}
-                    <TableHead className="w-32 text-center font-bold text-foreground px-4 py-3">Actions</TableHead>
+                    {isColumnVisible('outcome') && <TableHead className="font-bold text-foreground px-4 py-3 bg-muted">Outcome</TableHead>}
+                    {isColumnVisible('join_url') && <TableHead className="font-bold text-foreground px-4 py-3 bg-muted">Join URL</TableHead>}
+                    {isColumnVisible('organizer') && <TableHead className="font-bold text-foreground px-4 py-3 bg-muted">Organizer</TableHead>}
+                    <TableHead className="w-32 text-center font-bold text-foreground px-4 py-3 bg-muted">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -645,10 +657,7 @@ const Meetings = () => {
                         {isColumnVisible('subject') && (
                           <TableCell className="px-4 py-3">
                             <button 
-                              onClick={() => {
-                                setEditingMeeting(meeting);
-                                setShowModal(true);
-                              }}
+                              onClick={() => setViewingMeeting(meeting)}
                               className="text-primary hover:underline font-medium text-left truncate"
                             >
                               <HighlightedText text={meeting.subject} highlight={searchTerm} />
@@ -729,6 +738,11 @@ const Meetings = () => {
                                   }
                                 },
                                 {
+                                  label: "Create Task",
+                                  icon: <CheckSquare className="w-4 h-4" />,
+                                  onClick: () => handleCreateTask(meeting)
+                                },
+                                {
                                   label: "Delete",
                                   icon: <Trash2 className="w-4 h-4" />,
                                   onClick: () => {
@@ -748,28 +762,27 @@ const Meetings = () => {
               </div>
               
               {/* Pagination */}
-              {totalPages > 0 && (
-                <div className="flex items-center justify-between p-4 border-t">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">
-                      Showing {filteredMeetings.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredMeetings.length)} of {filteredMeetings.length} meetings
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
-                      Previous
-                    </Button>
-                    <span className="text-sm">
-                      Page {currentPage} of {totalPages || 1}
-                    </span>
-                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>
-                      Next
-                    </Button>
-                  </div>
+              <div className="flex items-center justify-between p-4 border-t">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    Showing {sortedAndFilteredMeetings.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, sortedAndFilteredMeetings.length)} of {sortedAndFilteredMeetings.length} meetings
+                  </span>
                 </div>
-              )}
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1 || totalPages === 0}>
+                    Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {currentPage} of {totalPages || 1}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages || totalPages === 0}>
+                    Next
+                  </Button>
+                </div>
+              </div>
             </Card>
-          </div>}
+          </div>
+        )}
       </div>
 
       {/* Modals */}
@@ -793,8 +806,10 @@ const Meetings = () => {
       <MeetingColumnCustomizer
         open={showColumnCustomizer}
         onOpenChange={setShowColumnCustomizer}
-        columns={columns}
-        onColumnsChange={setColumns}
+        columns={localColumns}
+        onColumnsChange={setLocalColumns}
+        onSave={saveColumns}
+        isSaving={isSaving}
       />
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
@@ -839,6 +854,7 @@ const Meetings = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </div>;
 };
 export default Meetings;

@@ -6,7 +6,7 @@ export class LeadsCSVExporter {
   async exportLeads(leads: any[]): Promise<string> {
     console.log('LeadsCSVExporter: Starting export of', leads.length, 'leads');
     
-    // Define the exact field order as required
+    // Define the exact field order as required - matches DB schema
     const fieldOrder = [
       'id',
       'lead_name', 
@@ -21,12 +21,12 @@ export class LeadsCSVExporter {
       'industry',
       'country',
       'description',
+      'account_id',
       'contact_owner',
       'created_by',
       'modified_by',
       'created_time',
-      'modified_time',
-      'action_items_json'
+      'modified_time'
     ];
 
     // Fetch user display names for all user fields
@@ -41,31 +41,9 @@ export class LeadsCSVExporter {
 
     // Process each lead
     for (const lead of leads) {
-      // Fetch action items for this lead
-      let actionItemsJson = '';
-      try {
-        const { data: actionItems } = await supabase
-          .from('lead_action_items')
-          .select('*')
-          .eq('lead_id', lead.id)
-          .order('created_at', { ascending: true });
-
-        if (actionItems && actionItems.length > 0) {
-          actionItemsJson = JSON.stringify(actionItems);
-        }
-      } catch (error) {
-        console.warn('Failed to fetch action items for lead', lead.id, error);
-      }
-
       // Create row with values in exact field order
       const rowValues = fieldOrder.map(field => {
-        let value;
-        
-        if (field === 'action_items_json') {
-          value = actionItemsJson;
-        } else {
-          value = lead[field];
-        }
+        let value = lead[field];
 
         // Format ID (shortened)
         if (field === 'id' && value) {

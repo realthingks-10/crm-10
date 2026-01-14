@@ -17,6 +17,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { X, ChevronDown } from "lucide-react";
 import { Account } from "./AccountTable";
 import { DuplicateWarning } from "./shared/DuplicateWarning";
+import { MergeRecordsModal } from "./shared/MergeRecordsModal";
+import { regions, regionCountries } from "@/utils/countryData";
 
 const accountSchema = z.object({
   company_name: z.string()
@@ -41,6 +43,7 @@ const accountSchema = z.object({
       message: "Please enter a valid phone number (e.g., +1 234 567 8900)"
     })
     .optional(),
+  account_owner: z.string().optional(),
 });
 
 type AccountFormData = z.infer<typeof accountSchema>;
@@ -50,18 +53,8 @@ interface AccountModalProps {
   onOpenChange: (open: boolean) => void;
   account?: Account | null;
   onSuccess: () => void;
+  onCreated?: (account: Account) => void;
 }
-
-const regions = ["EU", "US", "ASIA", "LATAM", "MEA", "Other"];
-
-const regionCountries: Record<string, string[]> = {
-  EU: ["Germany", "France", "UK", "Italy", "Spain", "Netherlands", "Sweden", "Poland", "Belgium", "Austria", "Switzerland", "Other EU"],
-  US: ["United States", "Canada", "Mexico"],
-  ASIA: ["Japan", "China", "India", "South Korea", "Singapore", "Taiwan", "Thailand", "Vietnam", "Malaysia", "Indonesia", "Other Asia"],
-  LATAM: ["Brazil", "Argentina", "Chile", "Colombia", "Peru", "Other LATAM"],
-  MEA: ["UAE", "Saudi Arabia", "South Africa", "Israel", "Turkey", "Egypt", "Other MEA"],
-  Other: ["Other"]
-};
 
 const statuses = ["New", "Working", "Warm", "Hot", "Nurture", "Closed-Won", "Closed-Lost"];
 
@@ -82,12 +75,17 @@ const companyTypes = ["OEM", "Tier-1", "Tier-2", "Startup", "Enterprise", "SMB",
 
 
 
-export const AccountModal = ({ open, onOpenChange, account, onSuccess }: AccountModalProps) => {
+export const AccountModal = ({ open, onOpenChange, account, onSuccess, onCreated }: AccountModalProps) => {
   const { toast } = useToast();
   const { logCreate, logUpdate } = useCRUDAudit();
   const [loading, setLoading] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [availableCountries, setAvailableCountries] = useState<string[]>([]);
+  const [users, setUsers] = useState<{ id: string; full_name: string | null }[]>([]);
+  
+  // Merge modal state
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState<string>("");
 
   // Duplicate detection for accounts
   const { duplicates, isChecking, checkDuplicates, clearDuplicates } = useDuplicateDetection({
@@ -126,6 +124,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
       notes: "",
       industry: "",
       phone: "",
+      account_owner: "",
     },
   });
 
@@ -138,6 +137,24 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
       setAvailableCountries([]);
     }
   }, [watchedRegion]);
+
+  // Fetch users for owner dropdown
+  useEffect(() => {
+    const fetchUsers = async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .order('full_name', { ascending: true });
+      
+      if (!error && data) {
+        setUsers(data);
+      }
+    };
+    
+    if (open) {
+      fetchUsers();
+    }
+  }, [open]);
 
   useEffect(() => {
     if (account) {
@@ -152,7 +169,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
         notes: account.notes || "",
         industry: account.industry || "",
         phone: account.phone || "",
-        
+        account_owner: account.account_owner || "",
       });
       setSelectedTags(account.tags || []);
       if (account.region && regionCountries[account.region]) {
@@ -170,7 +187,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
         notes: "",
         industry: "",
         phone: "",
-        
+        account_owner: "",
       });
       setSelectedTags([]);
     }
@@ -196,7 +213,26 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
         return;
       }
 
-      // Only set account_owner on create, not update
+      // Check for exact email duplicate (blocking)
+      if (data.email && !account) {
+        const { data: existingAccount } = await supabase
+          .from('accounts')
+          .select('id, company_name')
+          .ilike('email', data.email)
+          .maybeSingle();
+        
+        if (existingAccount) {
+          toast({
+            title: "Duplicate Email",
+            description: `This email already exists in Accounts (${existingAccount.company_name}). Please use a different email.`,
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Build account data with owner
       const accountData = {
         company_name: data.company_name,
         email: data.email || null,
@@ -210,8 +246,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
         industry: data.industry || null,
         phone: data.phone || null,
         modified_by: user.data.user.id,
-        // Only set account_owner on new accounts
-        ...(account ? {} : { account_owner: user.data.user.id }),
+        account_owner: data.account_owner || user.data.user.id,
       };
 
       if (account) {
@@ -249,6 +284,11 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
           title: "Success",
           description: "Account created successfully",
         });
+
+        // Call onCreated callback if provided
+        if (onCreated && newAccount) {
+          onCreated(newAccount as Account);
+        }
       }
 
       onSuccess();
@@ -266,7 +306,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" disableOutsidePointerEvents={false}>
         <DialogHeader>
           <DialogTitle>
             {account ? "Edit Account" : "Add New Account"}
@@ -274,13 +314,21 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
             {/* Duplicate Warning */}
             {!account && duplicates.length > 0 && (
-              <DuplicateWarning duplicates={duplicates} entityType="account" />
+              <DuplicateWarning 
+                duplicates={duplicates} 
+                entityType="account"
+                onMerge={(duplicateId) => {
+                  setMergeTargetId(duplicateId);
+                  setMergeModalOpen(true);
+                }}
+                preventCreation={duplicates.some(d => d.matchType === "exact")}
+              />
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <FormField
                 control={form.control}
                 name="company_name"
@@ -289,7 +337,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
                     <FormLabel>Company Name *</FormLabel>
                     <FormControl>
                       <Input 
-                        placeholder="Company Name" 
+                        placeholder="e.g., Acme Corporation"
                         {...field} 
                         onChange={(e) => {
                           field.onChange(e);
@@ -309,7 +357,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input type="email" placeholder="contact@company.com" {...field} />
+                      <Input type="email" placeholder="e.g., name@company.com" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -325,7 +373,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select industry" />
+                          <SelectValue placeholder="Select industry..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -350,7 +398,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select region" />
+                          <SelectValue placeholder="Select region..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -375,7 +423,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
                     <Select onValueChange={field.onChange} value={field.value} disabled={!watchedRegion}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={watchedRegion ? "Select country" : "Select region first"} />
+                          <SelectValue placeholder={watchedRegion ? "Select country..." : "Select region first..."} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -428,7 +476,7 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select company type" />
+                          <SelectValue placeholder="Select company type..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -454,13 +502,38 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
+                          <SelectValue placeholder="Select status..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {statuses.map((status) => (
                           <SelectItem key={status} value={status}>
                             {status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="account_owner"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Account Owner</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select owner..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {users.map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.full_name || 'Unknown User'}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -519,14 +592,27 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
                     <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0 bg-popover z-50" align="start">
-                  <div className="p-3 max-h-[300px] overflow-y-auto">
-                    <div className="flex flex-wrap gap-2">
+                <PopoverContent className="w-[480px] p-0 bg-popover border shadow-lg z-50" align="start">
+                  <div className="p-4 max-h-[350px] overflow-y-auto">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground">Select Tags</span>
+                      {selectedTags.length > 0 && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => setSelectedTags([])}
+                        >
+                          Clear all
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
                       {tagOptions.map((tag) => (
                         <Badge
                           key={tag}
                           variant={selectedTags.includes(tag) ? "default" : "outline"}
-                          className="cursor-pointer hover:opacity-80 transition-opacity"
+                          className="cursor-pointer hover:opacity-80 transition-opacity justify-center py-1.5 text-xs"
                           onClick={() => toggleTag(tag)}
                         >
                           {tag}
@@ -579,6 +665,24 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
           </form>
         </Form>
       </DialogContent>
+
+      {/* Merge Modal */}
+      {mergeTargetId && (
+        <MergeRecordsModal
+          open={mergeModalOpen}
+          onOpenChange={(open) => {
+            setMergeModalOpen(open);
+            if (!open) setMergeTargetId("");
+          }}
+          entityType="accounts"
+          sourceId=""
+          targetId={mergeTargetId}
+          onSuccess={() => {
+            onSuccess();
+            onOpenChange(false);
+          }}
+        />
+      )}
     </Dialog>
   );
 };

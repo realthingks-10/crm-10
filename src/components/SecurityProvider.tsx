@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useSecurityAudit } from '@/hooks/useSecurityAudit';
+import { usePermissions } from '@/contexts/PermissionsContext';
 import { supabase } from '@/integrations/supabase/client';
 
 interface SecurityContextType {
@@ -24,53 +24,33 @@ interface SecurityProviderProps {
 }
 
 export const SecurityProvider = ({ children }: SecurityProviderProps) => {
-  const { user } = useAuth();
-  const { logSecurityEvent } = useSecurityAudit();
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const { user, loading: authLoading } = useAuth();
+  const { userRole, isAdmin, loading: permissionsLoading } = usePermissions();
   
   // Refs to prevent duplicate session logging
   const sessionLoggedRef = useRef<string | null>(null);
   const visibilityHandlerRef = useRef<(() => void) | null>(null);
 
-  const hasAdminAccess = userRole === 'admin';
+  const hasAdminAccess = isAdmin;
 
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      if (!user) {
-        setUserRole(null);
-        return;
-      }
-
-      try {
-        // Check user metadata first for role
-        const metadataRole = user.user_metadata?.role;
-        if (metadataRole) {
-          setUserRole(metadataRole);
-          return;
-        }
-
-        // Fallback to database lookup
-        const { data, error } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .single();
-
-        if (error && error.code !== 'PGRST116') {
-          console.error('Error fetching user role:', error);
-          setUserRole('user');
-          return;
-        }
-
-        const role = data?.role || 'user';
-        setUserRole(role);
-      } catch (error) {
-        console.error('Failed to fetch user role:', error);
-        setUserRole('user');
-      }
-    };
-
-    fetchUserRole();
+  // Inline security event logging to avoid circular dependency
+  const logSecurityEvent = useCallback((
+    action: string,
+    resourceType: string,
+    resourceId?: string,
+    details?: Record<string, unknown>
+  ) => {
+    if (!user) return;
+    
+    // Fire and forget - don't block rendering
+    supabase.rpc('log_security_event', {
+      p_action: action,
+      p_resource_type: resourceType,
+      p_resource_id: resourceId,
+      p_details: details as unknown as Record<string, never>
+    }).then(({ error }) => {
+      if (error) console.error('Failed to log security event:', error);
+    });
   }, [user]);
 
   // Debounced visibility change handler
@@ -84,6 +64,9 @@ export const SecurityProvider = ({ children }: SecurityProviderProps) => {
   }, [user, logSecurityEvent]);
 
   useEffect(() => {
+    // Don't do anything while still loading auth
+    if (authLoading || permissionsLoading) return;
+    
     if (!user || !userRole) {
       // Clean up if user logs out
       if (visibilityHandlerRef.current) {
@@ -118,7 +101,7 @@ export const SecurityProvider = ({ children }: SecurityProviderProps) => {
         visibilityHandlerRef.current = null;
       }
     };
-  }, [user, userRole, logSecurityEvent, handleVisibilityChange]);
+  }, [user, userRole, authLoading, permissionsLoading, logSecurityEvent, handleVisibilityChange]);
 
   const value = {
     isSecurityEnabled: true,

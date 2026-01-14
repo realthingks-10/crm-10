@@ -65,6 +65,23 @@ export const formatDateTime = (
 };
 
 /**
+ * Format a date with time in the standard CRM format: HH:MM DD-MMM-YYYY
+ * Example: 08:30 05-Jan-2026
+ */
+export const formatDateTimeStandard = (
+  date: Date | string | null | undefined
+): string => {
+  if (!date) return '';
+  try {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    // Format: HH:mm dd-MMM-yyyy (24-hour time followed by date)
+    return dateFnsFormat(dateObj, 'HH:mm dd-MMM-yyyy');
+  } catch {
+    return '';
+  }
+};
+
+/**
  * Format a number as currency
  */
 export const formatCurrency = (

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface ColumnConfig {
   field: string;
@@ -10,7 +10,7 @@ export interface ColumnConfig {
   order: number;
 }
 
-type ModuleName = 'accounts' | 'leads' | 'contacts' | 'deals';
+type ModuleName = 'accounts' | 'leads' | 'contacts' | 'deals' | 'meetings';
 
 interface UseColumnPreferencesOptions {
   moduleName: ModuleName;
@@ -20,16 +20,9 @@ interface UseColumnPreferencesOptions {
 export const useColumnPreferences = ({ moduleName, defaultColumns }: UseColumnPreferencesOptions) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [userId, setUserId] = useState<string | null>(null);
-
-  // Get current user
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) setUserId(user.id);
-    };
-    getUser();
-  }, []);
+  // Use useAuth instead of supabase.auth.getUser() - eliminates extra network call
+  const { user } = useAuth();
+  const userId = user?.id || null;
 
   // Fetch column preferences from database
   const { data: savedColumns, isLoading } = useQuery({

@@ -1,12 +1,12 @@
-
 import { useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useSecurityAudit } from '@/hooks/useSecurityAudit';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 export const useSecureDataAccess = () => {
   const { logDataAccess, logSecurityEvent } = useSecurityAudit();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const secureQuery = useCallback(async (
     tableName: string,
@@ -14,23 +14,23 @@ export const useSecureDataAccess = () => {
     operation: string = 'SELECT'
   ) => {
     try {
-      // Log the data access attempt
-      await logDataAccess(tableName, operation);
+      // Non-blocking: fire and forget for logging - don't wait
+      void logDataAccess(tableName, operation);
 
       const result = await query;
 
       if (result.error) {
-        // Log failed access attempts
-        await logSecurityEvent('DATA_ACCESS_FAILED', tableName, undefined, {
+        // Non-blocking: log failed access attempts
+        void logSecurityEvent('DATA_ACCESS_FAILED', tableName, undefined, {
           error: result.error.message,
           operation
         });
         throw result.error;
       }
 
-      // Log successful sensitive data access
+      // Non-blocking: log sensitive data access
       if (['deals', 'contacts', 'leads'].includes(tableName.toLowerCase())) {
-        await logSecurityEvent('SENSITIVE_DATA_ACCESS', tableName, undefined, {
+        void logSecurityEvent('SENSITIVE_DATA_ACCESS', tableName, undefined, {
           operation,
           record_count: result.data?.length || 1
         });
@@ -49,15 +49,14 @@ export const useSecureDataAccess = () => {
     exportType: string = 'CSV'
   ) => {
     try {
-      // Log export attempt
-      await logSecurityEvent('DATA_EXPORT', tableName, undefined, {
+      // Non-blocking: log export attempt
+      void logSecurityEvent('DATA_EXPORT', tableName, undefined, {
         export_type: exportType,
         record_count: data.length,
         timestamp: new Date().toISOString()
       });
 
-      // Check if user has export permissions (could be enhanced with role-based checks)
-      const { data: { user } } = await supabase.auth.getUser();
+      // Check if user is authenticated using cached auth
       if (!user) {
         throw new Error('User not authenticated for export');
       }
@@ -72,7 +71,7 @@ export const useSecureDataAccess = () => {
       });
       throw error;
     }
-  }, [logSecurityEvent, toast]);
+  }, [logSecurityEvent, toast, user]);
 
   return {
     secureQuery,

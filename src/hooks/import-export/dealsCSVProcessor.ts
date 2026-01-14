@@ -102,16 +102,8 @@ export class DealsCSVProcessor {
           continue;
         }
 
-        // Extract action items if present
-        let actionItemsData: any[] = [];
-        if (rowObj.action_items_json) {
-          try {
-            actionItemsData = JSON.parse(rowObj.action_items_json);
-            delete rowObj.action_items_json; // Remove from deal data
-          } catch (error) {
-            console.warn('Failed to parse action items JSON:', error);
-          }
-        }
+        // Remove action_items_json if present in old exports (no longer used)
+        delete rowObj.action_items_json;
 
         // Prepare deal record
         const dealRecord = this.prepareDeal(rowObj, options.userId);
@@ -212,11 +204,6 @@ export class DealsCSVProcessor {
           result.successCount++;
         }
 
-        // Process action items if any
-        if (actionItemsData.length > 0) {
-          await this.processActionItems(dealId, actionItemsData, options.userId);
-        }
-
       } catch (error: any) {
         result.errorCount++;
         result.errors.push(`Row ${actualRowNumber}: Processing error - ${error.message}`);
@@ -251,7 +238,7 @@ export class DealsCSVProcessor {
       modified_by: userId
     };
 
-    // Map CSV fields to database fields (excluding user fields)
+    // Map CSV fields to database fields (excluding user fields) - Added account_id, contact_id
     const fieldMapping: Record<string, string> = {
       'deal_name': 'deal_name',
       'stage': 'stage',
@@ -292,7 +279,9 @@ export class DealsCSVProcessor {
       'handoff_status': 'handoff_status',
       'rfq_received_date': 'rfq_received_date',
       'proposal_due_date': 'proposal_due_date',
-      'rfq_status': 'rfq_status'
+      'rfq_status': 'rfq_status',
+      'account_id': 'account_id',
+      'contact_id': 'contact_id'
     };
 
     Object.entries(fieldMapping).forEach(([csvField, dbField]) => {
@@ -356,39 +345,5 @@ export class DealsCSVProcessor {
     });
 
     return dealRecord;
-  }
-
-  private async processActionItems(dealId: string, actionItemsData: any[], userId: string) {
-    try {
-      // Clear existing action items for this deal (optional - you might want to keep them)
-      await supabase
-        .from('deal_action_items')
-        .delete()
-        .eq('deal_id', dealId);
-
-      // Insert new action items
-      const actionItemsToInsert = actionItemsData.map(item => ({
-        deal_id: dealId,
-        next_action: item.next_action || '',
-        status: item.status || 'Open',
-        due_date: item.due_date || null,
-        assigned_to: item.assigned_to || null,
-        created_by: userId
-      }));
-
-      if (actionItemsToInsert.length > 0) {
-        const { error } = await supabase
-          .from('deal_action_items')
-          .insert(actionItemsToInsert);
-
-        if (error) {
-          console.error('Error inserting deal action items:', error);
-        } else {
-          console.log(`Inserted ${actionItemsToInsert.length} action items for deal ${dealId}`);
-        }
-      }
-    } catch (error) {
-      console.error('Error processing deal action items:', error);
-    }
   }
 }

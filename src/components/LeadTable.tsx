@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCRUDAudit } from "@/hooks/useCRUDAudit";
@@ -24,13 +24,14 @@ import { LeadDeleteConfirmDialog } from "./LeadDeleteConfirmDialog";
 import { AccountDetailModalById } from "./accounts/AccountDetailModalById";
 import { SendEmailModal, EmailRecipient } from "./SendEmailModal";
 import { MeetingModal } from "./MeetingModal";
-import { TaskModal } from "./tasks/TaskModal";
 import { LeadDetailModal } from "./leads/LeadDetailModal";
 import { HighlightedText } from "./shared/HighlightedText";
 import { ClearFiltersButton } from "./shared/ClearFiltersButton";
 import { TableSkeleton } from "./shared/Skeletons";
-import { useTasks } from "@/hooks/useTasks";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { moveFieldToEnd } from "@/utils/columnOrderUtils";
+import { formatDateTimeStandard } from "@/utils/formatUtils";
+import { getLeadStatusColor } from "@/utils/statusBadgeUtils";
 
 // Export ref interface for parent component
 export interface LeadTableRef {
@@ -41,67 +42,28 @@ export interface LeadTableRef {
 interface Lead {
   id: string;
   lead_name: string;
-  company_name: string | null;
+  company_name?: string | null;
   account_company_name?: string | null;
   account_id?: string;
-  position: string | null;
-  email: string | null;
-  phone_no: string | null;
+  position?: string | null;
+  email?: string | null;
+  phone_no?: string | null;
   contact_owner?: string;
-  created_time: string | null;
+  created_time?: string | null;
   modified_time?: string;
-  lead_status: string | null;
-  contact_source: string | null;
-  linkedin: string | null;
-  website: string | null;
-  description: string | null;
+  lead_status?: string | null;
+  contact_source?: string | null;
+  linkedin?: string | null;
+  website?: string | null;
+  description?: string | null;
   created_by?: string;
   modified_by?: string;
-  country: string | null;
-  industry: string | null;
+  country?: string | null;
+  industry?: string | null;
+  last_contacted_at?: string | null;
 }
 
-const defaultColumns: LeadColumnConfig[] = [{
-  field: 'lead_name',
-  label: 'Lead Name',
-  visible: true,
-  order: 0
-}, {
-  field: 'account_company_name',
-  label: 'Company Name',
-  visible: true,
-  order: 1
-}, {
-  field: 'position',
-  label: 'Position',
-  visible: true,
-  order: 2
-}, {
-  field: 'email',
-  label: 'Email',
-  visible: true,
-  order: 3
-}, {
-  field: 'phone_no',
-  label: 'Phone',
-  visible: true,
-  order: 4
-}, {
-  field: 'lead_status',
-  label: 'Lead Status',
-  visible: true,
-  order: 5
-}, {
-  field: 'contact_source',
-  label: 'Source',
-  visible: true,
-  order: 6
-}, {
-  field: 'contact_owner',
-  label: 'Lead Owner',
-  visible: true,
-  order: 7
-}];
+// Use defaultLeadColumns from LeadColumnCustomizer (imported above)
 
 interface LeadTableProps {
   showColumnCustomizer: boolean;
@@ -129,10 +91,9 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
   const { toast } = useToast();
   const { logDelete, logBulkDelete } = useCRUDAudit();
   const { userRole } = useUserRole();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [leads, setLeads] = useState<Lead[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState(initialStatus);
@@ -155,20 +116,26 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Fetch current user ID for "me" filtering
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
+  // Use cached auth instead of fetching user each time
+  const { data: authData } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        // If owner=me in URL, set the owner filter to current user's ID
-        if (ownerParam === 'me') {
-          setOwnerFilter(user.id);
-        }
+      return user;
+    },
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+
+  // Set current user ID from cached auth
+  useEffect(() => {
+    if (authData) {
+      setCurrentUserId(authData.id);
+      if (ownerParam === 'me') {
+        setOwnerFilter(authData.id);
       }
-    };
-    fetchCurrentUser();
-  }, [ownerParam]);
+    }
+  }, [authData, ownerParam]);
 
   // Sync statusFilter when initialStatus prop changes (from URL)
   useEffect(() => {
@@ -190,6 +157,87 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
   
+  // viewId effect is moved below the leads query
+  
+  // Column preferences hook
+  const { columns, saveColumns, isSaving } = useColumnPreferences({
+    moduleName: 'leads',
+    defaultColumns: defaultLeadColumns,
+  });
+  const [localColumns, setLocalColumns] = useState<LeadColumnConfig[]>([]);
+  const [isColumnsInitialized, setIsColumnsInitialized] = useState(false);
+  
+  // Only initialize columns once when they first load from preferences
+  useEffect(() => {
+    if (columns.length > 0 && !isColumnsInitialized) {
+      setLocalColumns(columns);
+      setIsColumnsInitialized(true);
+    }
+  }, [columns, isColumnsInitialized]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [showConvertModal, setShowConvertModal] = useState(false);
+  const [leadToConvert, setLeadToConvert] = useState<Lead | null>(null);
+  const [sortField, setSortField] = useState<string | null>('lead_name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [viewAccountId, setViewAccountId] = useState<string | null>(null);
+  const [accountViewOpen, setAccountViewOpen] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState<EmailRecipient | null>(null);
+  const [emailLead, setEmailLead] = useState<Lead | null>(null);
+  const [meetingModalOpen, setMeetingModalOpen] = useState(false);
+  const [meetingLead, setMeetingLead] = useState<Lead | null>(null);
+  const navigate = useNavigate();
+
+  const handleCreateTask = (lead: Lead) => {
+    const params = new URLSearchParams({
+      create: '1',
+      module: 'leads',
+      recordId: lead.id,
+      recordName: encodeURIComponent(lead.lead_name || 'Lead'),
+      return: '/leads',
+      returnViewId: lead.id,
+    });
+    navigate(`/tasks?${params.toString()}`);
+  };
+
+  // Fetch all profiles for owner dropdown with caching
+  const { data: allProfiles = [] } = useQuery({
+    queryKey: ['all-profiles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('id, full_name');
+      return data || [];
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  // Fetch leads with React Query caching
+  const { data: leads = [], isLoading: loading, refetch: refetchLeads } = useQuery({
+    queryKey: ['leads'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('leads').select(`
+        *,
+        accounts:account_id (
+          company_name
+        )
+      `).order('created_time', { ascending: false });
+      
+      if (error) throw error;
+      
+      // Transform data to include account_company_name
+      return (data || []).map(lead => ({
+        ...lead,
+        account_company_name: lead.accounts?.company_name || lead.company_name || null
+      })) as Lead[];
+    },
+    staleTime: 2 * 60 * 1000, // 2 minutes - balance freshness with performance
+  });
+
+  const fetchLeads = () => {
+    refetchLeads();
+  };
+
   // Handle viewId from URL (from global search)
   const viewId = searchParams.get('viewId');
   useEffect(() => {
@@ -206,47 +254,6 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
       }
     }
   }, [viewId, leads, setSearchParams]);
-  
-  // Column preferences hook
-  const { columns, saveColumns, isSaving } = useColumnPreferences({
-    moduleName: 'leads',
-    defaultColumns: defaultLeadColumns,
-  });
-  const [localColumns, setLocalColumns] = useState<LeadColumnConfig[]>(columns);
-  
-  useEffect(() => {
-    setLocalColumns(columns);
-  }, [columns]);
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
-  const [showConvertModal, setShowConvertModal] = useState(false);
-  const [leadToConvert, setLeadToConvert] = useState<Lead | null>(null);
-  const [sortField, setSortField] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [viewAccountId, setViewAccountId] = useState<string | null>(null);
-  const [accountViewOpen, setAccountViewOpen] = useState(false);
-  const [emailModalOpen, setEmailModalOpen] = useState(false);
-  const [emailRecipient, setEmailRecipient] = useState<EmailRecipient | null>(null);
-  const [meetingModalOpen, setMeetingModalOpen] = useState(false);
-  const [meetingLead, setMeetingLead] = useState<Lead | null>(null);
-  const [taskModalOpen, setTaskModalOpen] = useState(false);
-  const [taskLeadId, setTaskLeadId] = useState<string | null>(null);
-  
-  const { createTask } = useTasks();
-
-  // Fetch all profiles for owner dropdown
-  const { data: allProfiles = [] } = useQuery({
-    queryKey: ['all-profiles'],
-    queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, full_name');
-      return data || [];
-    },
-  });
-
-  useEffect(() => {
-    fetchLeads();
-  }, []);
 
   useEffect(() => {
     const searchLower = debouncedSearchTerm.toLowerCase();
@@ -309,40 +316,7 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
   };
 
   const getSortIcon = (field: string) => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />;
-    }
-    return sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />;
-  };
-
-  const fetchLeads = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase.from('leads').select(`
-        *,
-        accounts:account_id (
-          company_name
-        )
-      `).order('created_time', { ascending: false });
-      
-      if (error) throw error;
-      
-      // Transform data to include account_company_name
-      const transformedData = (data || []).map(lead => ({
-        ...lead,
-        account_company_name: lead.accounts?.company_name || lead.company_name || null
-      }));
-      
-      setLeads(transformedData);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to fetch leads",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
+    return null; // Hide sort icons but keep sorting on click
   };
 
   const handleDelete = async (deleteLinkedRecords: boolean = true) => {
@@ -360,16 +334,8 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
         // Delete notifications by lead_id
         await supabase.from('notifications').delete().eq('lead_id', leadToDelete.id);
 
-        // Get action items and delete notifications for them
-        const { data: actionItems } = await supabase.from('lead_action_items').select('id').eq('lead_id', leadToDelete.id);
-        if (actionItems && actionItems.length > 0) {
-          const actionItemIds = actionItems.map(item => item.id);
-          await supabase.from('notifications').delete().in('action_item_id', actionItemIds);
-        }
-
-        // Delete lead action items
-        const { error: actionItemsError } = await supabase.from('lead_action_items').delete().eq('lead_id', leadToDelete.id);
-        if (actionItemsError) throw actionItemsError;
+        // Unlink tasks from this lead (tasks can exist independently)
+        await supabase.from('tasks').update({ lead_id: null }).eq('lead_id', leadToDelete.id);
       }
 
       // Delete the lead
@@ -405,15 +371,8 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
         // Delete notifications for all selected leads
         await supabase.from('notifications').delete().in('lead_id', selectedLeads);
         
-        // Get all action items for selected leads
-        const { data: actionItems } = await supabase.from('lead_action_items').select('id').in('lead_id', selectedLeads);
-        if (actionItems && actionItems.length > 0) {
-          const actionItemIds = actionItems.map(item => item.id);
-          await supabase.from('notifications').delete().in('action_item_id', actionItemIds);
-        }
-        
-        // Delete all action items
-        await supabase.from('lead_action_items').delete().in('lead_id', selectedLeads);
+        // Unlink tasks from these leads
+        await supabase.from('tasks').update({ lead_id: null }).in('lead_id', selectedLeads);
       }
       
       const { error } = await supabase.from('leads').delete().in('id', selectedLeads);
@@ -491,7 +450,11 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
 
   const { displayNames } = useUserDisplayNames(ownerIds);
   
-  const visibleColumns = localColumns.filter(col => col.visible);
+  // Memoize visible columns to prevent position changes on re-render
+  const visibleColumns = useMemo(() => moveFieldToEnd(
+    localColumns.filter((col) => col.visible).sort((a, b) => a.order - b.order),
+    "contact_owner",
+  ), [localColumns]);
   const pageLeads = getCurrentPageLeads();
 
   // Check if any filters are active
@@ -519,9 +482,8 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
         }).eq('id', leadToConvert.id);
         
         if (!error) {
-          setLeads(prevLeads => prevLeads.map(lead => 
-            lead.id === leadToConvert.id ? { ...lead, lead_status: 'Converted' } : lead
-          ));
+          // Invalidate cache to trigger refetch
+          queryClient.invalidateQueries({ queryKey: ['leads'] });
         }
       } catch (error) {
         // Silent fail for status update
@@ -531,10 +493,6 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
     setLeadToConvert(null);
   };
 
-  const handleCreateTask = (lead: Lead) => {
-    setTaskLeadId(lead.id);
-    setTaskModalOpen(true);
-  };
 
   const handleViewLead = (lead: Lead) => {
     setViewingLead(lead);
@@ -550,33 +508,14 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
       .join('');
   };
 
-  // Generate consistent color from name
+  // Generate consistent vibrant color from name (matching Accounts pattern)
   const getAvatarColor = (name: string) => {
     const colors = [
-      'bg-slate-500', 'bg-slate-600', 'bg-zinc-500', 'bg-gray-500',
-      'bg-stone-500', 'bg-neutral-500', 'bg-slate-700', 'bg-zinc-600'
+      'bg-blue-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 
+      'bg-rose-600', 'bg-cyan-600', 'bg-indigo-600', 'bg-teal-600'
     ];
     const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
     return colors[index];
-  };
-
-  const getStatusBadgeClasses = (status?: string) => {
-    switch (status) {
-      case 'New':
-        return 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800';
-      case 'Attempted':
-        return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 border-amber-200 dark:border-amber-800';
-      case 'Follow-up':
-        return 'bg-slate-100 text-slate-700 dark:bg-slate-800/30 dark:text-slate-300 border-slate-200 dark:border-slate-700';
-      case 'Qualified':
-        return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
-      case 'Disqualified':
-        return 'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300 border-rose-200 dark:border-rose-800';
-      case 'Converted':
-        return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800';
-      default:
-        return 'bg-muted text-muted-foreground border-border';
-    }
   };
 
   return (
@@ -627,14 +566,14 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
 
       {/* Table */}
       <Card className="flex-1 min-h-0 flex flex-col">
-        <div className="relative overflow-auto flex-1">
+        <div className="relative overflow-auto flex-1 min-h-0">
           {loading ? (
             <TableSkeleton columns={visibleColumns.length + 2} rows={10} />
           ) : (
-            <Table>
+            <Table className="table-fixed w-full">
               <TableHeader>
-                <TableRow className="sticky top-0 z-20 bg-muted border-b-2">
-                  <TableHead className="w-12 text-center font-bold text-foreground">
+                <TableRow className="sticky top-0 z-20 bg-muted border-b-2 shadow-sm">
+                  <TableHead className="w-[50px] text-center font-bold text-foreground bg-muted">
                     <div className="flex justify-center">
                       <Checkbox 
                         checked={selectedLeads.length > 0 && selectedLeads.length === Math.min(pageLeads.length, 50)} 
@@ -642,21 +581,40 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
                       />
                     </div>
                   </TableHead>
-                  {visibleColumns.map(column => (
-                    <TableHead 
-                      key={column.field} 
-                      className="text-left font-bold text-foreground px-4 py-3 whitespace-nowrap"
-                    >
-                      <div 
-                        className="group flex items-center gap-2 cursor-pointer hover:text-primary" 
-                        onClick={() => handleSort(column.field)}
+                  {visibleColumns.map(column => {
+                    // Define fixed widths for each column type
+                    const getColumnWidth = (field: string) => {
+                      switch (field) {
+                        case 'lead_name': return 'w-[150px]';
+                        case 'account_company_name': return 'w-[140px]';
+                        case 'position': return 'w-[130px]';
+                        case 'email': return 'w-[180px]';
+                        case 'phone_no': return 'w-[120px]';
+                        case 'lead_status': return 'w-[100px]';
+                        case 'contact_source': return 'w-[100px]';
+                        case 'linkedin': return 'w-[100px]';
+                        case 'created_time': return 'w-[150px]';
+                        case 'last_contacted_at': return 'w-[150px]';
+                        case 'contact_owner': return 'w-[150px]';
+                        default: return 'w-[120px]';
+                      }
+                    };
+                    return (
+                      <TableHead 
+                        key={column.field} 
+                        className={`${getColumnWidth(column.field)} text-left font-bold text-foreground px-4 py-3 whitespace-nowrap bg-muted`}
                       >
-                        {column.label}
-                        {getSortIcon(column.field)}
-                      </div>
-                    </TableHead>
-                  ))}
-                  <TableHead className="text-center font-bold text-foreground w-48 px-4 py-3">
+                        <div 
+                          className="group flex items-center gap-2 cursor-pointer hover:text-primary" 
+                          onClick={() => handleSort(column.field)}
+                        >
+                          {column.label}
+                          {getSortIcon(column.field)}
+                        </div>
+                      </TableHead>
+                    );
+                  })}
+                  <TableHead className="w-[100px] text-center font-bold text-foreground px-4 py-3 bg-muted">
                     Actions
                   </TableHead>
                 </TableRow>
@@ -690,7 +648,7 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
                   pageLeads.map(lead => (
                     <TableRow 
                       key={lead.id} 
-                      className="group hover:bg-muted/20 border-b" 
+                      className={`group hover:bg-muted/30 border-b transition-colors ${selectedLeads.includes(lead.id) ? 'bg-primary/5' : ''}`}
                       data-state={selectedLeads.includes(lead.id) ? "selected" : undefined}
                     >
                       <TableCell className="text-center px-4 py-3">
@@ -704,7 +662,7 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
                       {visibleColumns.map(column => (
                         <TableCell 
                           key={column.field} 
-                          className="text-left px-4 py-3 align-middle whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]"
+                          className="text-left px-4 py-3 align-middle whitespace-nowrap overflow-hidden text-ellipsis"
                         >
                           {column.field === 'lead_name' ? (
                             <button 
@@ -736,7 +694,7 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
                             )
                           ) : column.field === 'lead_status' ? (
                             lead.lead_status ? (
-                              <Badge variant="outline" className={getStatusBadgeClasses(lead.lead_status)}>
+                              <Badge variant="outline" className={getLeadStatusColor(lead.lead_status)}>
                                 {lead.lead_status}
                               </Badge>
                             ) : (
@@ -757,6 +715,12 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
                           ) : column.field === 'position' ? (
                             lead.position ? (
                               <HighlightedText text={lead.position} highlight={debouncedSearchTerm} />
+                            ) : (
+                              <span className="text-center text-muted-foreground w-full block">-</span>
+                            )
+                          ) : column.field === 'created_time' || column.field === 'modified_time' || column.field === 'last_contacted_at' ? (
+                            lead[column.field as keyof Lead] ? (
+                              <span className="text-sm">{formatDateTimeStandard(lead[column.field as keyof Lead] as string)}</span>
                             ) : (
                               <span className="text-center text-muted-foreground w-full block">-</span>
                             )
@@ -792,6 +756,7 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
                                 label: "Send Email",
                                 icon: <Mail className="w-4 h-4" />,
                                 onClick: () => {
+                                  setEmailLead(lead);
                                   setEmailRecipient({
                                     name: lead.lead_name,
                                     email: lead.email,
@@ -843,17 +808,16 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
             </Table>
           )}
         </div>
-      </Card>
-
-      {/* Pagination */}
-      {totalPages > 0 && <div className="flex items-center justify-between">
+        
+        {/* Pagination */}
+        <div className="flex items-center justify-between p-4 border-t flex-shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">
               Showing {filteredLeads.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredLeads.length)} of {filteredLeads.length} leads
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1 || totalPages === 0}>
               <ChevronLeft className="w-4 h-4" />
               Previous
             </Button>
@@ -865,7 +829,8 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
-        </div>}
+        </div>
+      </Card>
 
       {/* Modals */}
       <LeadModal 
@@ -906,14 +871,7 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
         onSuccess={handleConvertSuccess} 
       />
 
-      <TaskModal
-        open={taskModalOpen}
-        onOpenChange={setTaskModalOpen}
-        onSubmit={createTask}
-        context={taskLeadId ? { module: 'leads', recordId: taskLeadId, locked: true } : undefined}
-      />
-
-      <LeadDeleteConfirmDialog 
+      <LeadDeleteConfirmDialog
         open={showDeleteDialog} 
         onConfirm={handleDelete} 
         onCancel={() => {
@@ -931,8 +889,12 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
 
       <SendEmailModal
         open={emailModalOpen}
-        onOpenChange={setEmailModalOpen}
+        onOpenChange={(open) => {
+          setEmailModalOpen(open);
+          if (!open) setEmailLead(null);
+        }}
         recipient={emailRecipient}
+        leadId={emailLead?.id}
       />
 
       <MeetingModal

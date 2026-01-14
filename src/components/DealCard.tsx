@@ -15,6 +15,7 @@ interface DealCardProps {
   selectionMode?: boolean;
   onDelete?: (dealId: string) => void;
   onStageChange?: (dealId: string, newStage: any) => void;
+  displayNames?: Record<string, string>;
 }
 
 export const DealCard = ({ 
@@ -24,7 +25,8 @@ export const DealCard = ({
   isSelected, 
   selectionMode, 
   onDelete, 
-  onStageChange 
+  onStageChange,
+  displayNames 
 }: DealCardProps) => {
   const formatCurrency = (amount: number, currency: string = 'EUR') => {
     const symbols = { USD: '$', EUR: '€', INR: '₹' };
@@ -40,7 +42,7 @@ export const DealCard = ({
 
   return (
     <Card
-      className={`deal-card cursor-pointer transition-all duration-200 hover:scale-[1.01] hover:shadow-md group ${
+      className={`deal-card cursor-pointer transition-all duration-200 hover:scale-[1.01] hover:shadow-md hover:border-primary/30 group ${
         isDragging ? 'opacity-50 shadow-lg' : ''
       } ${isSelected ? 'ring-2 ring-primary bg-primary/5 border-primary' : ''} ${
         selectionMode ? 'pl-8' : ''
@@ -107,7 +109,7 @@ export const DealCard = ({
           <div className="flex items-center">
             <span className="text-xs text-muted-foreground w-16 shrink-0 font-medium">Owner:</span>
             <p className="text-sm text-muted-foreground truncate font-medium">
-              {deal.lead_owner}
+              {displayNames?.[deal.lead_owner] || deal.lead_owner}
             </p>
           </div>
         )}

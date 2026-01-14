@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -7,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { RelatedTasksSection } from "@/components/shared/RelatedTasksSection";
+import { Task } from "@/types/task";
 import { 
   Calendar, 
   Clock, 
@@ -24,12 +27,22 @@ import {
   CalendarClock,
   Activity,
   ListTodo,
-  Pencil
+  Pencil,
+  Plus,
+  Link2,
+  History
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatDateTimeStandard } from "@/utils/formatUtils";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 import { getMeetingStatus } from "@/utils/meetingStatus";
 import { MeetingFollowUpsSection } from "./MeetingFollowUpsSection";
+import { RecordChangeHistory } from "@/components/shared/RecordChangeHistory";
+import { ContactDetailModal } from "@/components/contacts/ContactDetailModal";
+import { LeadDetailModal } from "@/components/leads/LeadDetailModal";
+import { AccountDetailModalById } from "@/components/accounts/AccountDetailModalById";
+import { MeetingActivityTimeline } from "./MeetingActivityTimeline";
+import { MeetingActivityLogModal } from "./MeetingActivityLogModal";
 
 interface Meeting {
   id: string;
@@ -52,23 +65,45 @@ interface Meeting {
   contact_name?: string | null;
 }
 
-interface LinkedTask {
+interface LinkedContact {
   id: string;
-  title: string;
-  status: string;
-  priority: string;
-  due_date?: string | null;
+  contact_name: string;
+  email?: string | null;
+  phone_no?: string | null;
+  position?: string | null;
+  company_name?: string | null;
+  account_id?: string | null;
+  linkedin?: string | null;
+  website?: string | null;
+  region?: string | null;
+  industry?: string | null;
+  contact_source?: string | null;
+  description?: string | null;
+  tags?: string[] | null;
+  email_opens?: number | null;
+  email_clicks?: number | null;
+  engagement_score?: number | null;
+  created_time?: string | null;
+  modified_time?: string | null;
 }
 
-interface LinkedAccount {
+interface LinkedLead {
   id: string;
-  company_name: string;
-}
-
-interface LinkedDeal {
-  id: string;
-  deal_name: string;
-  stage: string;
+  lead_name: string;
+  email?: string | null;
+  phone_no?: string | null;
+  position?: string | null;
+  company_name?: string | null;
+  account_id?: string | null;
+  linkedin?: string | null;
+  website?: string | null;
+  country?: string | null;
+  industry?: string | null;
+  contact_source?: string | null;
+  description?: string | null;
+  lead_status?: string | null;
+  created_time?: string | null;
+  modified_time?: string | null;
 }
 
 interface MeetingDetailModalProps {
@@ -117,11 +152,49 @@ export const MeetingDetailModal = ({
   onUpdate 
 }: MeetingDetailModalProps) => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
-  const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
-  const [linkedAccount, setLinkedAccount] = useState<LinkedAccount | null>(null);
-  const [linkedDeal, setLinkedDeal] = useState<LinkedDeal | null>(null);
+  const [linkedContact, setLinkedContact] = useState<LinkedContact | null>(null);
+  const [linkedLead, setLinkedLead] = useState<LinkedLead | null>(null);
+  const [linkedAccount, setLinkedAccount] = useState<{ id: string; company_name: string; industry?: string | null; status?: string | null } | null>(null);
+  const [linkedDeal, setLinkedDeal] = useState<{ id: string; deal_name: string; stage: string; total_contract_value?: number | null } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [tasksRefreshToken, setTasksRefreshToken] = useState(0);
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0);
+
+  // Detail modal states
+  const [showContactDetailModal, setShowContactDetailModal] = useState(false);
+  const [showLeadDetailModal, setShowLeadDetailModal] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showActivityLogModal, setShowActivityLogModal] = useState(false);
+
+  // Navigate to Tasks module for task creation
+  const handleRequestCreateTask = () => {
+    if (!meeting) return;
+    const params = new URLSearchParams({
+      create: '1',
+      module: 'meetings',
+      recordId: meeting.id,
+      recordName: meeting.subject,
+      return: '/meetings',
+      returnViewId: meeting.id,
+      returnTab: 'tasks',
+    });
+    onOpenChange(false);
+    navigate(`/tasks?${params.toString()}`);
+  };
+
+  const handleRequestEditTask = (task: Task) => {
+    if (!meeting) return;
+    const params = new URLSearchParams({
+      viewId: task.id,
+      return: '/meetings',
+      returnViewId: meeting.id,
+      returnTab: 'tasks',
+    });
+    onOpenChange(false);
+    navigate(`/tasks?${params.toString()}`);
+  };
 
   const userIds = [meeting?.created_by].filter(Boolean) as string[];
   const { displayNames } = useUserDisplayNames(userIds);
@@ -136,20 +209,35 @@ export const MeetingDetailModal = ({
     if (!meeting) return;
     setLoading(true);
     try {
-      // Fetch linked tasks
-      const { data: tasksData } = await supabase
-        .from('tasks')
-        .select('id, title, status, priority, due_date')
-        .eq('meeting_id', meeting.id)
-        .order('created_at', { ascending: false });
-      
-      setLinkedTasks(tasksData || []);
+      // Fetch linked contact if exists
+      if (meeting.contact_id) {
+        const { data: contactData } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('id', meeting.contact_id)
+          .single();
+        setLinkedContact(contactData);
+      } else {
+        setLinkedContact(null);
+      }
+
+      // Fetch linked lead if exists
+      if (meeting.lead_id) {
+        const { data: leadData } = await supabase
+          .from('leads')
+          .select('*')
+          .eq('id', meeting.lead_id)
+          .single();
+        setLinkedLead(leadData);
+      } else {
+        setLinkedLead(null);
+      }
 
       // Fetch linked account if exists
       if (meeting.account_id) {
         const { data: accountData } = await supabase
           .from('accounts')
-          .select('id, company_name')
+          .select('id, company_name, industry, status')
           .eq('id', meeting.account_id)
           .single();
         setLinkedAccount(accountData);
@@ -161,7 +249,7 @@ export const MeetingDetailModal = ({
       if (meeting.deal_id) {
         const { data: dealData } = await supabase
           .from('deals')
-          .select('id, deal_name, stage')
+          .select('id, deal_name, stage, total_contract_value')
           .eq('id', meeting.deal_id)
           .single();
         setLinkedDeal(dealData);
@@ -173,6 +261,10 @@ export const MeetingDetailModal = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleActivityLogged = () => {
+    setActivityRefreshKey(prev => prev + 1);
   };
 
   if (!meeting) return null;
@@ -203,305 +295,392 @@ export const MeetingDetailModal = ({
     );
   };
 
-  const priorityColors: Record<string, string> = {
-    high: 'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300',
-    medium: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
-    low: 'bg-slate-100 text-slate-600 dark:bg-slate-800/30 dark:text-slate-400',
-  };
-
-  const taskStatusColors: Record<string, string> = {
-    open: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300',
-    in_progress: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300',
-    completed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300',
-    cancelled: 'bg-gray-100 text-gray-600 dark:bg-gray-800/30 dark:text-gray-400',
-  };
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-start justify-between">
-            <div>
-              <DialogTitle className="text-xl flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                {meeting.subject}
-              </DialogTitle>
-              <div className="flex items-center gap-2 mt-2">
-                {getStatusBadge()}
-                {getOutcomeBadge()}
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto animate-in fade-in-0 zoom-in-95 duration-200">
+          <DialogHeader>
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-xl flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  {meeting.subject}
+                </DialogTitle>
+                <div className="flex items-center gap-2 mt-2">
+                  {getStatusBadge()}
+                  {getOutcomeBadge()}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {meeting.join_url && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(meeting.join_url!, '_blank')}
+                    className="gap-2"
+                  >
+                    <Video className="h-4 w-4" />
+                    Join
+                  </Button>
+                )}
+                {onEdit && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onEdit(meeting)}
+                    className="gap-2"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {meeting.join_url && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(meeting.join_url!, '_blank')}
-                  className="gap-2"
-                >
-                  <Video className="h-4 w-4" />
-                  Join
-                </Button>
-              )}
-              {onEdit && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onEdit(meeting)}
-                  className="gap-2"
-                >
-                  <Pencil className="h-4 w-4" />
-                  Edit
-                </Button>
-              )}
-            </div>
-          </div>
-        </DialogHeader>
+          </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="followups">Follow-ups</TabsTrigger>
-            <TabsTrigger value="activity">Activity</TabsTrigger>
-            <TabsTrigger value="related">Related</TabsTrigger>
-          </TabsList>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="overview" className="flex items-center gap-1">
+                <Calendar className="h-4 w-4" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="linked" className="flex items-center gap-1">
+                <Link2 className="h-4 w-4" />
+                Linked
+              </TabsTrigger>
+              <TabsTrigger value="tasks" className="flex items-center gap-1">
+                <ListTodo className="h-4 w-4" />
+                Tasks
+              </TabsTrigger>
+              <TabsTrigger value="activity" className="flex items-center gap-1">
+                <Activity className="h-4 w-4" />
+                Activity
+              </TabsTrigger>
+              <TabsTrigger value="history" className="flex items-center gap-1">
+                <History className="h-4 w-4" />
+                History
+              </TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="overview" className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Meeting Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span>{format(new Date(meeting.start_time), 'EEEE, dd MMM yyyy')}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>
-                      {format(new Date(meeting.start_time), 'HH:mm')} - {format(new Date(meeting.end_time), 'HH:mm')}
-                    </span>
-                  </div>
-                  {meeting.description && (
-                    <div className="mt-3">
-                      <p className="text-sm text-muted-foreground mb-1">Description</p>
-                      <p className="text-sm whitespace-pre-wrap">{meeting.description}</p>
-                    </div>
-                  )}
-                  {meeting.notes && (
-                    <div className="mt-3">
-                      <p className="text-sm text-muted-foreground mb-1">Notes</p>
-                      <p className="text-sm whitespace-pre-wrap">{meeting.notes}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Attendees</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {meeting.lead_name && (
+            <TabsContent value="overview" className="space-y-4 mt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Meeting Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                      <span>Lead: {meeting.lead_name}</span>
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span>{format(new Date(meeting.start_time), 'EEEE, dd MMM yyyy')}</span>
                     </div>
-                  )}
-                  {meeting.contact_name && (
                     <div className="flex items-center gap-2 text-sm">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <span>Contact: {meeting.contact_name}</span>
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span>
+                        {format(new Date(meeting.start_time), 'HH:mm')} - {format(new Date(meeting.end_time), 'HH:mm')}
+                      </span>
                     </div>
-                  )}
-                  {attendeesList.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-sm text-muted-foreground mb-2">External Participants</p>
-                      <div className="space-y-1">
-                        {attendeesList.map((attendee, idx) => (
-                          <div key={idx} className="text-sm flex items-center gap-2">
-                            <User className="h-3 w-3 text-muted-foreground" />
-                            <span>{attendee.name || attendee.email}</span>
-                          </div>
-                        ))}
+                    {meeting.description && (
+                      <div className="mt-3">
+                        <p className="text-sm text-muted-foreground mb-1">Description</p>
+                        <p className="text-sm whitespace-pre-wrap">{meeting.description}</p>
                       </div>
-                    </div>
-                  )}
-                  {meeting.created_by && (
-                    <div className="flex items-center gap-2 text-sm mt-3 pt-3 border-t">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <span>Organizer: {displayNames[meeting.created_by] || 'Loading...'}</span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                    )}
+                    {meeting.notes && (
+                      <div className="mt-3">
+                        <p className="text-sm text-muted-foreground mb-1">Notes</p>
+                        <p className="text-sm whitespace-pre-wrap">{meeting.notes}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
 
-            {/* Timestamps */}
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              {meeting.created_at && (
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  Created: {format(new Date(meeting.created_at), 'dd/MM/yyyy')}
-                </span>
-              )}
-            </div>
-          </TabsContent>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Attendees</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {meeting.lead_name && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span>Lead: {meeting.lead_name}</span>
+                      </div>
+                    )}
+                    {meeting.contact_name && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span>Contact: {meeting.contact_name}</span>
+                      </div>
+                    )}
+                    {attendeesList.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm text-muted-foreground mb-2">External Participants</p>
+                        <div className="space-y-1">
+                          {attendeesList.map((attendee, idx) => (
+                            <div key={idx} className="text-sm flex items-center gap-2">
+                              <User className="h-3 w-3 text-muted-foreground" />
+                              <span>{attendee.name || attendee.email}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {meeting.created_by && (
+                      <div className="flex items-center gap-2 text-sm mt-3 pt-3 border-t">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span>Organizer: {displayNames[meeting.created_by] || 'Loading...'}</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
 
-          <TabsContent value="followups" className="mt-4">
-            <MeetingFollowUpsSection meetingId={meeting.id} />
-          </TabsContent>
+              {/* Follow-ups Section */}
+              <MeetingFollowUpsSection meetingId={meeting.id} />
 
-          <TabsContent value="activity" className="mt-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Activity Timeline</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  <Activity className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>Activity tracking coming soon</p>
-                  <p className="text-xs mt-1">Meeting history and changes will be displayed here</p>
+              {/* Timestamps */}
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                {meeting.created_at && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Created: {formatDateTimeStandard(meeting.created_at)}
+                  </span>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="linked" className="mt-4 space-y-4">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="related" className="mt-4 space-y-4">
-            {/* Linked Account */}
-            {linkedAccount && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    Linked Account
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Building2 className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">{linkedAccount.company_name}</p>
-                      <p className="text-sm text-muted-foreground">Account</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Linked Deal */}
-            {linkedDeal && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Briefcase className="h-4 w-4" />
-                    Linked Deal
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Briefcase className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium">{linkedDeal.deal_name}</p>
-                      <Badge variant="outline" className="mt-1">{linkedDeal.stage}</Badge>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Linked Tasks */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ListTodo className="h-4 w-4" />
-                  Linked Tasks ({linkedTasks.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : linkedTasks.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <ListTodo className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p>No linked tasks</p>
-                    <p className="text-xs mt-1">Tasks linked to this meeting will appear here</p>
-                  </div>
-                ) : (
-                  <ScrollArea className="h-[200px]">
-                    <div className="space-y-2">
-                      {linkedTasks.map((task) => (
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Linked Contact */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Contact
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {linkedContact ? (
                         <div
-                          key={task.id}
-                          className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                          className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
+                          onClick={() => setShowContactDetailModal(true)}
                         >
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-sm truncate">{task.title}</p>
-                            {task.due_date && (
-                              <p className="text-xs text-muted-foreground">
-                                Due: {format(new Date(task.due_date), 'dd/MM/yyyy')}
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <User className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{linkedContact.contact_name}</p>
+                              <p className="text-sm text-muted-foreground truncate">
+                                {linkedContact.position || 'Contact'}
                               </p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 ml-2">
-                            <Badge variant="outline" className={taskStatusColors[task.status] || ''}>
-                              {task.status.replace('_', ' ')}
-                            </Badge>
-                            <Badge variant="outline" className={priorityColors[task.priority] || ''}>
-                              {task.priority}
-                            </Badge>
+                            </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                )}
-              </CardContent>
-            </Card>
+                      ) : (
+                        <div className="text-center py-6 text-muted-foreground">
+                          <User className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No linked contact</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
 
-            {/* Lead/Contact Info */}
-            {(meeting.lead_name || meeting.contact_name) && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Primary Contact
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">{meeting.lead_name || meeting.contact_name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {meeting.lead_name ? 'Lead' : 'Contact'}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  {/* Linked Lead */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Lead
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {linkedLead ? (
+                        <div
+                          className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
+                          onClick={() => setShowLeadDetailModal(true)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Users className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{linkedLead.lead_name}</p>
+                              <p className="text-sm text-muted-foreground truncate">
+                                {linkedLead.company_name || 'Lead'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 text-muted-foreground">
+                          <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No linked lead</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
 
-            {/* Empty state for no linked entities */}
-            {!linkedAccount && !linkedDeal && linkedTasks.length === 0 && !meeting.lead_name && !meeting.contact_name && (
-              <div className="text-center py-8 text-muted-foreground">
-                <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>No linked records</p>
-                <p className="text-xs mt-1">This meeting is not linked to any other records</p>
+                  {/* Linked Account */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        Account
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {linkedAccount ? (
+                        <div
+                          className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
+                          onClick={() => setShowAccountModal(true)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Building2 className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{linkedAccount.company_name}</p>
+                              <p className="text-sm text-muted-foreground truncate">
+                                {linkedAccount.industry || 'Account'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 text-muted-foreground">
+                          <Building2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No linked account</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Linked Deal */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Briefcase className="h-4 w-4" />
+                        Deal
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {linkedDeal ? (
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Briefcase className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{linkedDeal.deal_name}</p>
+                              <p className="text-sm text-muted-foreground truncate">
+                                {linkedDeal.stage}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 text-muted-foreground">
+                          <Briefcase className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No linked deal</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="tasks" className="mt-4">
+              <RelatedTasksSection
+                moduleType="meetings"
+                recordId={meeting.id}
+                recordName={meeting.subject}
+                refreshToken={tasksRefreshToken}
+                onRequestCreateTask={handleRequestCreateTask}
+                onRequestEditTask={handleRequestEditTask}
+              />
+            </TabsContent>
+
+            <TabsContent value="activity" className="mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold">Activity Timeline</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowActivityLogModal(true)}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Log Activity
+                </Button>
               </div>
-            )}
-          </TabsContent>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+
+              {/* Meeting Notes Card */}
+              {meeting.notes && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Meeting Notes
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm whitespace-pre-wrap">{meeting.notes}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Activity Timeline */}
+              <MeetingActivityTimeline meetingId={meeting.id} refreshKey={activityRefreshKey} />
+            </TabsContent>
+
+            <TabsContent value="history" className="mt-4">
+              <RecordChangeHistory entityType="meetings" entityId={meeting.id} maxHeight="400px" />
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detail Modals */}
+      {linkedContact && (
+        <ContactDetailModal
+          open={showContactDetailModal}
+          onOpenChange={setShowContactDetailModal}
+          contact={{ ...linkedContact, company_name: linkedContact.company_name || null }}
+          onUpdate={onUpdate}
+        />
+      )}
+
+      {linkedLead && (
+        <LeadDetailModal
+          open={showLeadDetailModal}
+          onOpenChange={setShowLeadDetailModal}
+          lead={{ ...linkedLead, company_name: linkedLead.company_name || null }}
+          onUpdate={onUpdate}
+        />
+      )}
+
+      {linkedAccount && (
+        <AccountDetailModalById
+          open={showAccountModal}
+          onOpenChange={setShowAccountModal}
+          accountId={linkedAccount.id}
+          onUpdate={onUpdate}
+        />
+      )}
+
+      {/* Activity Log Modal */}
+      <MeetingActivityLogModal
+        open={showActivityLogModal}
+        onOpenChange={setShowActivityLogModal}
+        meetingId={meeting.id}
+        onSuccess={handleActivityLogged}
+      />
+    </>
   );
 };

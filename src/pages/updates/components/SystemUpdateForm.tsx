@@ -86,7 +86,7 @@ const SystemUpdateForm = ({ update, onClose }: SystemUpdateFormProps) => {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{update ? "Edit System Update" : "Add System Update"}</DialogTitle>
         </DialogHeader>

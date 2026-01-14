@@ -19,66 +19,66 @@ export default {
     	},
     	extend: {
     		colors: {
-    			border: 'hsl(var(--border))',
-    			input: 'hsl(var(--input))',
-    			ring: 'hsl(var(--ring))',
-    			background: 'hsl(var(--background))',
-    			foreground: 'hsl(var(--foreground))',
+    			border: 'hsl(var(--border) / <alpha-value>)',
+    			input: 'hsl(var(--input) / <alpha-value>)',
+    			ring: 'hsl(var(--ring) / <alpha-value>)',
+    			background: 'hsl(var(--background) / <alpha-value>)',
+    			foreground: 'hsl(var(--foreground) / <alpha-value>)',
     			primary: {
-    				DEFAULT: 'hsl(var(--primary))',
-    				foreground: 'hsl(var(--primary-foreground))'
+    				DEFAULT: 'hsl(var(--primary) / <alpha-value>)',
+    				foreground: 'hsl(var(--primary-foreground) / <alpha-value>)'
     			},
     			secondary: {
-    				DEFAULT: 'hsl(var(--secondary))',
-    				foreground: 'hsl(var(--secondary-foreground))'
+    				DEFAULT: 'hsl(var(--secondary) / <alpha-value>)',
+    				foreground: 'hsl(var(--secondary-foreground) / <alpha-value>)'
     			},
     			destructive: {
-    				DEFAULT: 'hsl(var(--destructive))',
-    				foreground: 'hsl(var(--destructive-foreground))'
+    				DEFAULT: 'hsl(var(--destructive) / <alpha-value>)',
+    				foreground: 'hsl(var(--destructive-foreground) / <alpha-value>)'
     			},
     			muted: {
-    				DEFAULT: 'hsl(var(--muted))',
-    				foreground: 'hsl(var(--muted-foreground))'
+    				DEFAULT: 'hsl(var(--muted) / <alpha-value>)',
+    				foreground: 'hsl(var(--muted-foreground) / <alpha-value>)'
     			},
     			accent: {
-    				DEFAULT: 'hsl(var(--accent))',
-    				foreground: 'hsl(var(--accent-foreground))'
+    				DEFAULT: 'hsl(var(--accent) / <alpha-value>)',
+    				foreground: 'hsl(var(--accent-foreground) / <alpha-value>)'
     			},
     			popover: {
-    				DEFAULT: 'hsl(var(--popover))',
-    				foreground: 'hsl(var(--popover-foreground))'
+    				DEFAULT: 'hsl(var(--popover) / <alpha-value>)',
+    				foreground: 'hsl(var(--popover-foreground) / <alpha-value>)'
     			},
     			card: {
-    				DEFAULT: 'hsl(var(--card))',
-    				foreground: 'hsl(var(--card-foreground))'
+    				DEFAULT: 'hsl(var(--card) / <alpha-value>)',
+    				foreground: 'hsl(var(--card-foreground) / <alpha-value>)'
     			},
     			sidebar: {
-    				DEFAULT: 'hsl(var(--sidebar-background))',
-    				foreground: 'hsl(var(--sidebar-foreground))',
-    				primary: 'hsl(var(--sidebar-primary))',
-    				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
-    				accent: 'hsl(var(--sidebar-accent))',
-    				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
-    				border: 'hsl(var(--sidebar-border))',
-    				ring: 'hsl(var(--sidebar-ring))'
+    				DEFAULT: 'hsl(var(--sidebar-background) / <alpha-value>)',
+    				foreground: 'hsl(var(--sidebar-foreground) / <alpha-value>)',
+    				primary: 'hsl(var(--sidebar-primary) / <alpha-value>)',
+    				'primary-foreground': 'hsl(var(--sidebar-primary-foreground) / <alpha-value>)',
+    				accent: 'hsl(var(--sidebar-accent) / <alpha-value>)',
+    				'accent-foreground': 'hsl(var(--sidebar-accent-foreground) / <alpha-value>)',
+    				border: 'hsl(var(--sidebar-border) / <alpha-value>)',
+    				ring: 'hsl(var(--sidebar-ring) / <alpha-value>)'
     			},
     			stage: {
-    				lead: 'hsl(var(--stage-lead))',
-    				'lead-foreground': 'hsl(var(--stage-lead-foreground))',
-    				discussions: 'hsl(var(--stage-discussions))',
-    				'discussions-foreground': 'hsl(var(--stage-discussions-foreground))',
-    				qualified: 'hsl(var(--stage-qualified))',
-    				'qualified-foreground': 'hsl(var(--stage-qualified-foreground))',
-    				rfq: 'hsl(var(--stage-rfq))',
-    				'rfq-foreground': 'hsl(var(--stage-rfq-foreground))',
-    				offered: 'hsl(var(--stage-offered))',
-    				'offered-foreground': 'hsl(var(--stage-offered-foreground))',
-    				won: 'hsl(var(--stage-won))',
-    				'won-foreground': 'hsl(var(--stage-won-foreground))',
-    				lost: 'hsl(var(--stage-lost))',
-    				'lost-foreground': 'hsl(var(--stage-lost-foreground))',
-    				dropped: 'hsl(var(--stage-dropped))',
-    				'dropped-foreground': 'hsl(var(--stage-dropped-foreground))'
+    				lead: 'hsl(var(--stage-lead) / <alpha-value>)',
+    				'lead-foreground': 'hsl(var(--stage-lead-foreground) / <alpha-value>)',
+    				discussions: 'hsl(var(--stage-discussions) / <alpha-value>)',
+    				'discussions-foreground': 'hsl(var(--stage-discussions-foreground) / <alpha-value>)',
+    				qualified: 'hsl(var(--stage-qualified) / <alpha-value>)',
+    				'qualified-foreground': 'hsl(var(--stage-qualified-foreground) / <alpha-value>)',
+    				rfq: 'hsl(var(--stage-rfq) / <alpha-value>)',
+    				'rfq-foreground': 'hsl(var(--stage-rfq-foreground) / <alpha-value>)',
+    				offered: 'hsl(var(--stage-offered) / <alpha-value>)',
+    				'offered-foreground': 'hsl(var(--stage-offered-foreground) / <alpha-value>)',
+    				won: 'hsl(var(--stage-won) / <alpha-value>)',
+    				'won-foreground': 'hsl(var(--stage-won-foreground) / <alpha-value>)',
+    				lost: 'hsl(var(--stage-lost) / <alpha-value>)',
+    				'lost-foreground': 'hsl(var(--stage-lost-foreground) / <alpha-value>)',
+    				dropped: 'hsl(var(--stage-dropped) / <alpha-value>)',
+    				'dropped-foreground': 'hsl(var(--stage-dropped-foreground) / <alpha-value>)'
     			}
     		},
     		borderRadius: {
@@ -86,50 +86,76 @@ export default {
     			md: 'calc(var(--radius) - 2px)',
     			sm: 'calc(var(--radius) - 4px)'
     		},
-    		keyframes: {
-    			'accordion-down': {
-    				from: {
-    					height: '0'
-    				},
-    				to: {
-    					height: 'var(--radix-accordion-content-height)'
-    				}
-    			},
-    			'accordion-up': {
-    				from: {
-    					height: 'var(--radix-accordion-content-height)'
-    				},
-    				to: {
-    					height: '0'
-    				}
-    			},
-    			'fade-in': {
-    				'0%': {
-    					opacity: '0',
-    					transform: 'translateY(10px)'
-    				},
-    				'100%': {
-    					opacity: '1',
-    					transform: 'translateY(0)'
-    				}
-    			},
-    			'slide-up': {
-    				'0%': {
-    					opacity: '0',
-    					transform: 'translateY(20px)'
-    				},
-    				'100%': {
-    					opacity: '1',
-    					transform: 'translateY(0)'
-    				}
-    			}
-    		},
-    		animation: {
-    			'accordion-down': 'accordion-down 0.2s ease-out',
-    			'accordion-up': 'accordion-up 0.2s ease-out',
-    			'fade-in': 'fade-in 0.3s ease-out',
-    			'slide-up': 'slide-up 0.3s ease-out'
-    		},
+		keyframes: {
+			'accordion-down': {
+				from: {
+					height: '0',
+					opacity: '0'
+				},
+				to: {
+					height: 'var(--radix-accordion-content-height)',
+					opacity: '1'
+				}
+			},
+			'accordion-up': {
+				from: {
+					height: 'var(--radix-accordion-content-height)',
+					opacity: '1'
+				},
+				to: {
+					height: '0',
+					opacity: '0'
+				}
+			},
+			'collapsible-down': {
+				from: {
+					height: '0',
+					opacity: '0'
+				},
+				to: {
+					height: 'var(--radix-collapsible-content-height)',
+					opacity: '1'
+				}
+			},
+			'collapsible-up': {
+				from: {
+					height: 'var(--radix-collapsible-content-height)',
+					opacity: '1'
+				},
+				to: {
+					height: '0',
+					opacity: '0'
+				}
+			},
+			'fade-in': {
+				'0%': {
+					opacity: '0',
+					transform: 'translateY(4px)'
+				},
+				'100%': {
+					opacity: '1',
+					transform: 'translateY(0)'
+				}
+			},
+			'slide-up': {
+				'0%': {
+					opacity: '0',
+					transform: 'translateY(20px)'
+				},
+				'100%': {
+					opacity: '1',
+					transform: 'translateY(0)'
+				}
+			}
+		},
+		animation: {
+			'accordion-down': 'accordion-down 0.25s cubic-bezier(0.32, 0.72, 0, 1)',
+			'accordion-up': 'accordion-up 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
+			'collapsible-down': 'collapsible-down 0.25s cubic-bezier(0.32, 0.72, 0, 1)',
+			'collapsible-up': 'collapsible-up 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
+			'fade-in': 'fade-in 0.2s cubic-bezier(0.32, 0.72, 0, 1)',
+			'slide-up': 'slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1)'
+		},
     		fontFamily: {
     			sans: [
     				'Inter',

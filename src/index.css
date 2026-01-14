@@ -1,6 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
+/* Fonts loaded via index.html for optimal performance */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -49,23 +50,23 @@ All colors MUST be HSL.
 
     --radius: 0.5rem;
 
-    /* Stage Colors - Professional muted tones */
-    --stage-lead: 220 25% 90%;
-    --stage-lead-foreground: 220 25% 35%;
-    --stage-discussions: 200 20% 90%;
-    --stage-discussions-foreground: 200 20% 35%;
-    --stage-qualified: 210 25% 90%;
-    --stage-qualified-foreground: 210 25% 35%;
-    --stage-rfq: 215 20% 88%;
-    --stage-rfq-foreground: 215 20% 35%;
-    --stage-offered: 35 20% 90%;
-    --stage-offered-foreground: 35 25% 35%;
-    --stage-won: 150 20% 90%;
-    --stage-won-foreground: 150 25% 35%;
-    --stage-lost: 0 15% 90%;
-    --stage-lost-foreground: 0 20% 40%;
-    --stage-dropped: 0 0% 90%;
-    --stage-dropped-foreground: 0 0% 40%;
+    /* Stage Colors - Vibrant and visible */
+    --stage-lead: 220 70% 85%;
+    --stage-lead-foreground: 220 80% 25%;
+    --stage-discussions: 200 65% 82%;
+    --stage-discussions-foreground: 200 75% 25%;
+    --stage-qualified: 260 60% 85%;
+    --stage-qualified-foreground: 260 70% 30%;
+    --stage-rfq: 180 55% 80%;
+    --stage-rfq-foreground: 180 65% 25%;
+    --stage-offered: 35 80% 80%;
+    --stage-offered-foreground: 35 85% 25%;
+    --stage-won: 142 65% 80%;
+    --stage-won-foreground: 142 75% 25%;
+    --stage-lost: 0 70% 85%;
+    --stage-lost-foreground: 0 75% 30%;
+    --stage-dropped: 0 0% 80%;
+    --stage-dropped-foreground: 0 0% 30%;
 
     /* Light Blue Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(204 94% 50%), hsl(204 94% 55%));
@@ -122,7 +123,7 @@ All colors MUST be HSL.
     --secondary-foreground: 228 84% 4%; /* #f8fafc - slate-50 */
 
     --muted: 215 16% 46%; /* #1e293b - slate-800 */
-    --muted-foreground: 210 40% 98%; /* #64748b - slate-500 */
+    --muted-foreground: 210 40% 98%; /* #94a3b8 - slate-400 */
 
     --accent: 228 84% 4%; /* #3b82f6 - blue-500 */
     --accent-foreground: 215 20% 65%; /* #f8fafc - slate-50 */
@@ -196,25 +197,14 @@ All colors MUST be HSL.
   }
 }
 
-/* Shimmer animation for skeleton loading */
+/* Shimmer animation for skeleton loading - keyframe only */
 @keyframes shimmer {
   0% {
-    background-position: -200% 0;
+    transform: translateX(-100%);
   }
   100% {
-    background-position: 200% 0;
+    transform: translateX(100%);
   }
-}
-
-.skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    hsl(var(--muted)) 25%,
-    hsl(var(--muted) / 0.5) 50%,
-    hsl(var(--muted)) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1s ease-in-out infinite;
 }
 
 /* Improved placeholder visibility (#24) */
@@ -239,10 +229,14 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    font-size: 90%;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1.5;
   }
 
@@ -266,7 +260,7 @@ All colors MUST be HSL.
   .page-header {
     @apply flex items-center justify-between h-14 px-4 border-b border-border bg-background;
   }
-  
+
   .page-title {
     @apply text-lg font-semibold text-foreground;
   }
@@ -280,7 +274,7 @@ All colors MUST be HSL.
   .table-compact th {
     @apply h-9 px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide bg-muted/30;
   }
-  
+
   .table-compact td {
     @apply px-3 py-2 text-sm;
   }
@@ -350,9 +344,9 @@ All colors MUST be HSL.
 
   /* Skeleton shimmer animation */
   .skeleton-shimmer {
-    @apply bg-muted/60 rounded-lg relative overflow-hidden;
+    @apply bg-muted/40 rounded-lg relative overflow-hidden;
   }
-  
+
   .skeleton-shimmer::after {
     content: '';
     position: absolute;
@@ -364,16 +358,10 @@ All colors MUST be HSL.
     background: linear-gradient(
       90deg,
       transparent,
-      hsl(var(--muted) / 0.4),
+      hsl(var(--background) / 0.6),
       transparent
     );
-    animation: shimmer 1s infinite;
-  }
-  
-  @keyframes shimmer {
-    100% {
-      transform: translateX(100%);
-    }
+    animation: shimmer 1.5s infinite;
   }
 
   /* Widget card base styling */
@@ -384,5 +372,190 @@ All colors MUST be HSL.
   /* Dashboard grid consistent styling */
   .dashboard-widget {
     @apply h-full overflow-hidden flex flex-col animate-fade-in;
+  }
+
+  /* Email body preview styling */
+  .email-body-preview {
+    @apply text-foreground;
+  }
+  .email-body-preview a {
+    @apply text-primary underline;
+  }
+  .email-body-preview ul,
+  .email-body-preview ol {
+    @apply pl-6 my-2;
+  }
+  .email-body-preview ul {
+    @apply list-disc;
+  }
+  .email-body-preview ol {
+    @apply list-decimal;
+  }
+  .email-body-preview p {
+    @apply mb-2;
+  }
+  .email-body-preview h1 {
+    @apply text-xl font-bold mb-2;
+  }
+  .email-body-preview h2 {
+    @apply text-lg font-semibold mb-2;
+  }
+  .email-body-preview h3 {
+    @apply text-base font-semibold mb-1;
+  }
+
+  /* Rich text editor styling */
+  .rich-text-editor .ql-container {
+    @apply border-border rounded-b-md min-h-[150px] bg-background text-foreground;
+  }
+  .rich-text-editor .ql-toolbar {
+    @apply border-border rounded-t-md bg-muted/30;
+  }
+  .rich-text-editor .ql-editor {
+    @apply min-h-[150px];
+  }
+  .rich-text-editor .ql-editor.ql-blank::before {
+    @apply text-muted-foreground;
+  }
+  
+  /* Rich text editor font options */
+  .rich-text-editor .ql-font-arial {
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .rich-text-editor .ql-font-times-new-roman {
+    font-family: 'Times New Roman', Times, serif;
+  }
+  .rich-text-editor .ql-font-georgia {
+    font-family: Georgia, serif;
+  }
+  .rich-text-editor .ql-font-verdana {
+    font-family: Verdana, Geneva, sans-serif;
+  }
+  .rich-text-editor .ql-font-courier-new {
+    font-family: 'Courier New', Courier, monospace;
+  }
+  .rich-text-editor .ql-font-trebuchet-ms {
+    font-family: 'Trebuchet MS', sans-serif;
+  }
+
+  /* Font picker dropdown labels */
+  .rich-text-editor .ql-picker.ql-font .ql-picker-label::before,
+  .rich-text-editor .ql-picker.ql-font .ql-picker-item::before {
+    content: 'Font';
+  }
+  .rich-text-editor .ql-picker.ql-font .ql-picker-label[data-value="arial"]::before,
+  .rich-text-editor .ql-picker.ql-font .ql-picker-item[data-value="arial"]::before {
+    content: 'Arial';
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  .rich-text-editor .ql-picker.ql-font .ql-picker-label[data-value="times-new-roman"]::before,
+  .rich-text-editor .ql-picker.ql-font .ql-picker-item[data-value="times-new-roman"]::before {
+    content: 'Times New Roman';
+    font-family: 'Times New Roman', Times, serif;
+  }
+  .rich-text-editor .ql-picker.ql-font .ql-picker-label[data-value="georgia"]::before,
+  .rich-text-editor .ql-picker.ql-font .ql-picker-item[data-value="georgia"]::before {
+    content: 'Georgia';
+    font-family: Georgia, serif;
+  }
+  .rich-text-editor .ql-picker.ql-font .ql-picker-label[data-value="verdana"]::before,
+  .rich-text-editor .ql-picker.ql-font .ql-picker-item[data-value="verdana"]::before {
+    content: 'Verdana';
+    font-family: Verdana, Geneva, sans-serif;
+  }
+  .rich-text-editor .ql-picker.ql-font .ql-picker-label[data-value="courier-new"]::before,
+  .rich-text-editor .ql-picker.ql-font .ql-picker-item[data-value="courier-new"]::before {
+    content: 'Courier New';
+    font-family: 'Courier New', Courier, monospace;
+  }
+  .rich-text-editor .ql-picker.ql-font .ql-picker-label[data-value="trebuchet-ms"]::before,
+  .rich-text-editor .ql-picker.ql-font .ql-picker-item[data-value="trebuchet-ms"]::before {
+    content: 'Trebuchet MS';
+    font-family: 'Trebuchet MS', sans-serif;
+  }
+}
+
+/* Smooth Dialog Animations with cubic-bezier easing */
+@keyframes dialog-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialog-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes dialog-content-in {
+  from { 
+    opacity: 0; 
+    transform: translate(-50%, -48%) scale(0.97);
+  }
+  to { 
+    opacity: 1; 
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes dialog-content-out {
+  from { 
+    opacity: 1; 
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to { 
+    opacity: 0; 
+    transform: translate(-50%, -48%) scale(0.97);
+  }
+}
+
+[data-state="open"] > [data-radix-dialog-overlay] {
+  animation: dialog-overlay-in 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+[data-state="closed"] > [data-radix-dialog-overlay] {
+  animation: dialog-overlay-out 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+[data-state="open"] > [data-radix-dialog-content] {
+  animation: dialog-content-in 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+[data-state="closed"] > [data-radix-dialog-content] {
+  animation: dialog-content-out 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Enhanced modal styling for better visibility */
+[data-radix-dialog-content] {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25),
+              0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+/* Prevent background scroll when dialog is open */
+body:has([data-radix-dialog-overlay]) {
+  overflow: hidden;
+}
+
+/* Global smooth transition utilities */
+.transition-smooth {
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* GPU-accelerated transforms for smoother animations */
+.will-change-transform {
+  will-change: transform;
+}
+
+.will-change-opacity {
+  will-change: opacity;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

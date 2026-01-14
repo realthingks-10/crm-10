@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -18,7 +18,10 @@ import {
   Clock,
   User,
   HardDrive,
-  FileJson
+  FileJson,
+  CalendarClock,
+  Copy,
+  ExternalLink
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -32,6 +35,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import SettingsLoadingSkeleton from './shared/SettingsLoadingSkeleton';
+
+// Lazy load ModuleImportExport
+const ModuleImportExport = lazy(() => import('./ModuleImportExport'));
 
 interface Backup {
   id: string;
@@ -47,6 +62,15 @@ interface Backup {
   created_by: string;
 }
 
+interface BackupSchedule {
+  id?: string;
+  frequency: string;
+  time_of_day: string;
+  is_enabled: boolean;
+  next_run_at?: string;
+  last_run_at?: string;
+}
+
 const BackupRestoreSettings = () => {
   const [backups, setBackups] = useState<Backup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +81,12 @@ const BackupRestoreSettings = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedBackup, setSelectedBackup] = useState<Backup | null>(null);
   const [confirmText, setConfirmText] = useState('');
-  const [scheduledBackup, setScheduledBackup] = useState(false);
+  const [schedule, setSchedule] = useState<BackupSchedule>({
+    frequency: 'daily',
+    time_of_day: '00:00',
+    is_enabled: false,
+  });
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const { isAdmin, loading: roleLoading } = useUserRole();
   const { user } = useAuth();
@@ -97,13 +126,79 @@ const BackupRestoreSettings = () => {
     }
   }, []);
 
+  const fetchSchedule = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('backup_schedules')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (data && !error) {
+        setSchedule({
+          id: data.id,
+          frequency: data.frequency || 'daily',
+          time_of_day: data.time_of_day || '00:00',
+          is_enabled: data.is_enabled || false,
+          next_run_at: data.next_run_at,
+          last_run_at: data.last_run_at,
+        });
+      }
+    } catch (error) {
+      // No schedule exists yet, use defaults
+      console.log('No backup schedule found, using defaults');
+    }
+  }, []);
+
+  const handleSaveSchedule = async (newSchedule: BackupSchedule) => {
+    setSavingSchedule(true);
+    try {
+      const scheduleData = {
+        frequency: newSchedule.frequency,
+        time_of_day: newSchedule.time_of_day,
+        is_enabled: newSchedule.is_enabled,
+        created_by: user?.id,
+      };
+
+      if (schedule.id) {
+        // Update existing
+        const { error } = await supabase
+          .from('backup_schedules')
+          .update(scheduleData)
+          .eq('id', schedule.id);
+        
+        if (error) throw error;
+      } else {
+        // Create new
+        const { data, error } = await supabase
+          .from('backup_schedules')
+          .insert(scheduleData)
+          .select()
+          .single();
+        
+        if (error) throw error;
+        if (data) {
+          setSchedule(prev => ({ ...prev, id: data.id }));
+        }
+      }
+      
+      toast.success(newSchedule.is_enabled ? 'Scheduled backup enabled' : 'Scheduled backup disabled');
+    } catch (error: any) {
+      console.error('Error saving schedule:', error);
+      toast.error('Failed to save backup schedule');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
   useEffect(() => {
     if (!roleLoading && isAdmin) {
       fetchBackups();
+      fetchSchedule();
     } else if (!roleLoading) {
       setLoading(false);
     }
-  }, [fetchBackups, isAdmin, roleLoading]);
+  }, [fetchBackups, fetchSchedule, isAdmin, roleLoading]);
 
   const handleCreateBackup = async () => {
     if (!isAdmin) {
@@ -317,39 +412,145 @@ const BackupRestoreSettings = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" className="w-full" disabled>
-                <Upload className="h-4 w-4 mr-2" />
-                Import Backup File
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="w-full">
+                      <Button variant="outline" className="w-full" disabled>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Import Backup File
+                      </Button>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Use the restore option from backup history below</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <p className="text-xs text-muted-foreground mt-2 text-center">
-                Use restore from backup history below
+                Restore from backup history below
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Scheduled Backup Toggle - Feature Coming Soon */}
+        {/* Scheduled Backup Toggle */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
+                  <CalendarClock className="h-5 w-5 text-muted-foreground" />
                   <Label htmlFor="scheduled-backup" className="text-base">Scheduled Backups</Label>
-                  <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Automatically create daily backups at midnight
+                  Automatically create daily backups at scheduled time
                 </p>
               </div>
               <Switch
                 id="scheduled-backup"
-                checked={scheduledBackup}
-                onCheckedChange={setScheduledBackup}
-                disabled
+                checked={schedule.is_enabled}
+                onCheckedChange={(checked) => {
+                  setSchedule(prev => ({ ...prev, is_enabled: checked }));
+                  handleSaveSchedule({ ...schedule, is_enabled: checked });
+                }}
               />
             </div>
+            {schedule.is_enabled && (
+              <div className="mt-4 pt-4 border-t space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm text-muted-foreground">Time:</Label>
+                    <Select
+                      value={schedule.time_of_day}
+                      onValueChange={(value) => {
+                        setSchedule(prev => ({ ...prev, time_of_day: value }));
+                        handleSaveSchedule({ ...schedule, time_of_day: value });
+                      }}
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="00:00">12:00 AM</SelectItem>
+                        <SelectItem value="06:00">6:00 AM</SelectItem>
+                        <SelectItem value="12:00">12:00 PM</SelectItem>
+                        <SelectItem value="18:00">6:00 PM</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {savingSchedule && (
+                    <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                
+                {/* Schedule Info */}
+                <div className="grid grid-cols-2 gap-4 p-3 rounded-lg bg-muted/50">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Next Run
+                    </p>
+                    <p className="text-sm font-medium">
+                      {schedule.next_run_at 
+                        ? format(new Date(schedule.next_run_at), 'MMM d, yyyy HH:mm')
+                        : 'Pending...'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Last Run
+                    </p>
+                    <p className="text-sm font-medium">
+                      {schedule.last_run_at 
+                        ? format(new Date(schedule.last_run_at), 'MMM d, yyyy HH:mm')
+                        : 'Never'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Setup Instructions Alert */}
+                <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                  <p className="text-sm font-medium text-amber-600 mb-2">⚠️ External Scheduler Required</p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    For scheduled backups to run automatically, you need to set up an external cron service 
+                    (like cron-job.org) to call the backup endpoint at your scheduled time.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7"
+                      onClick={() => {
+                        const endpoint = `https://narvjcteixgjclvjvlbn.supabase.co/functions/v1/run-scheduled-backup`;
+                        navigator.clipboard.writeText(endpoint);
+                        toast.success('Endpoint URL copied to clipboard');
+                      }}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      Copy Endpoint
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7"
+                      onClick={() => window.open('https://console.cron-job.org/', '_blank')}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      cron-job.org
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Module Import/Export */}
+        <Suspense fallback={<SettingsLoadingSkeleton />}>
+          <ModuleImportExport />
+        </Suspense>
 
         {/* Backup History */}
         <Card>
@@ -387,7 +588,7 @@ const BackupRestoreSettings = () => {
                       </span>
                       <span className="flex items-center gap-1">
                         <User className="h-3 w-3" />
-                        {backup.backup_type === 'manual' ? 'Manual' : 'Auto'}
+                        {backup.backup_type === 'scheduled' ? 'Scheduled' : 'Manual'}
                       </span>
                       <span>
                         {backup.tables_count} tables • {backup.records_count?.toLocaleString()} records

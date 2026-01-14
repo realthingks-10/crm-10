@@ -140,23 +140,8 @@ const PageAccessSettings = () => {
           <Lock className="h-5 w-5" />
           Page Access Control
         </CardTitle>
-        <CardDescription>
-          Manage which roles can access each page in the application
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            placeholder="Search by page name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-            inputSize="control"
-          />
-        </div>
-
         {/* Permissions Table */}
         <div className="border rounded-lg">
           <Table>

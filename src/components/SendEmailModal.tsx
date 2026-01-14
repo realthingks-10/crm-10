@@ -6,9 +6,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Mail, Send, Loader2, Paperclip, X, FileIcon } from "lucide-react";
+import { RichTextEditor } from "@/components/shared/RichTextEditor";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // Generic recipient interface that works with contacts, leads, and accounts
 export interface EmailRecipient {
@@ -45,6 +46,7 @@ interface SendEmailModalProps {
 export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadId, accountId, onEmailSent, contact }: SendEmailModalProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [subject, setSubject] = useState("");
@@ -54,6 +56,26 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const senderEmail = user?.email || "noreply@acmecrm.com";
+
+  // Fetch sender's display name from profile
+  const { data: senderName } = useQuery({
+    queryKey: ['sender-profile-name', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (error) return null;
+      return data?.full_name || null;
+    },
+    enabled: !!user?.id && open,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Display name: use profile name, fallback to email username, then "System"
+  const senderDisplayName = senderName || user?.email?.split('@')[0] || "System";
 
   // Use recipient or convert legacy contact prop
   const emailRecipient: EmailRecipient | null = recipient || (contact ? {
@@ -195,6 +217,10 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
         }))
       );
 
+      // Determine entity type and id
+      const entityType = contactId ? 'contact' : leadId ? 'lead' : accountId ? 'account' : undefined;
+      const entityId = contactId || leadId || accountId || undefined;
+
       const { data, error } = await supabase.functions.invoke('send-email', {
         body: {
           to: emailRecipient.email,
@@ -203,6 +229,8 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
           body: body.trim(),
           from: senderEmail,
           attachments: attachmentData,
+          entityType,
+          entityId,
         },
       });
 
@@ -212,49 +240,42 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
         throw new Error(data.error);
       }
 
-      // Log email to email_history table
-      try {
-        await supabase.from('email_history').insert({
-          recipient_email: emailRecipient.email,
-          recipient_name: emailRecipient.name,
-          subject: subject.trim(),
-          body: body.trim(),
-          sender_email: senderEmail,
-          sent_by: user?.id,
-          contact_id: contactId || null,
-          lead_id: leadId || null,
-          account_id: accountId || null,
-          status: 'sent',
-        });
-      } catch (historyError) {
-        console.error('Error logging email to history:', historyError);
-      }
-
-      // Update contact email tracking stats if contactId is provided
+      // Update last_contacted_at for the entity (email history is created by the edge function)
+      const now = new Date().toISOString();
+      
       if (contactId) {
         try {
-          // Get current stats
-          const { data: contactData } = await supabase
+          await supabase
             .from('contacts')
-            .select('email_opens, email_clicks, engagement_score')
-            .eq('id', contactId)
-            .single();
-
-          if (contactData) {
-            const newEmailOpens = (contactData.email_opens || 0) + 1;
-            const newEngagementScore = Math.min((contactData.engagement_score || 0) + 5, 100);
-
-            await supabase
-              .from('contacts')
-              .update({
-                email_opens: newEmailOpens,
-                engagement_score: newEngagementScore,
-                last_contacted_at: new Date().toISOString(),
-              })
-              .eq('id', contactId);
-          }
+            .update({ last_contacted_at: now })
+            .eq('id', contactId);
+          queryClient.invalidateQueries({ queryKey: ['contacts'] });
         } catch (updateError) {
-          console.error('Error updating contact email stats:', updateError);
+          console.error('Error updating contact last_contacted_at:', updateError);
+        }
+      }
+      
+      if (leadId) {
+        try {
+          await supabase
+            .from('leads')
+            .update({ last_contacted_at: now })
+            .eq('id', leadId);
+          queryClient.invalidateQueries({ queryKey: ['leads'] });
+        } catch (updateError) {
+          console.error('Error updating lead last_contacted_at:', updateError);
+        }
+      }
+      
+      if (accountId) {
+        try {
+          await supabase
+            .from('accounts')
+            .update({ last_contacted_at: now })
+            .eq('id', accountId);
+          queryClient.invalidateQueries({ queryKey: ['accounts'] });
+        } catch (updateError) {
+          console.error('Error updating account last_contacted_at:', updateError);
         }
       }
 
@@ -281,7 +302,7 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-5 w-5" />
@@ -292,12 +313,14 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="p-3 bg-muted/50 rounded-lg">
-              <Label className="text-sm text-muted-foreground">From:</Label>
-              <p className="font-medium text-sm truncate">{senderEmail}</p>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">From</Label>
+              <p className="font-medium text-sm mt-1">{senderDisplayName}</p>
             </div>
             <div className="p-3 bg-muted/50 rounded-lg">
-              <Label className="text-sm text-muted-foreground">To:</Label>
-              <p className="font-medium text-sm truncate">{emailRecipient.email || "No email address"}</p>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">To</Label>
+              <p className="font-medium text-sm mt-1">
+                {emailRecipient.name} ({emailRecipient.email || "No email"})
+              </p>
             </div>
           </div>
 
@@ -335,12 +358,10 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
 
           <div className="space-y-2">
             <Label htmlFor="body">Message</Label>
-            <Textarea
-              id="body"
+            <RichTextEditor
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={setBody}
               placeholder="Email message..."
-              rows={6}
             />
           </div>
 

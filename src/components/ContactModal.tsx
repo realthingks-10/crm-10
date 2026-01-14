@@ -14,8 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { X, ChevronDown } from "lucide-react";
+import { X, ChevronDown, Plus, Loader2 } from "lucide-react";
 import { DuplicateWarning } from "./shared/DuplicateWarning";
+import { MergeRecordsModal } from "./shared/MergeRecordsModal";
+import { AccountModal } from "./AccountModal";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Helper function for URL validation
 const normalizeUrl = (url: string) => {
@@ -48,23 +51,9 @@ const contactSchema = z.object({
     })
     .optional()
     .or(z.literal("")),
-  website: z.string()
-    .refine((val) => {
-      if (!val) return true;
-      const normalized = normalizeUrl(val);
-      try {
-        new URL(normalized);
-        return true;
-      } catch {
-        return false;
-      }
-    }, {
-      message: "Please enter a valid website URL (e.g., company.com or https://company.com)",
-    })
-    .optional()
-    .or(z.literal("")),
   contact_source: z.string().optional(),
   description: z.string().max(1000, "Description must be less than 1000 characters").optional(),
+  contact_owner: z.string().optional(),
 });
 
 type ContactFormData = z.infer<typeof contactSchema>;
@@ -78,10 +67,7 @@ interface Contact {
   email?: string;
   phone_no?: string;
   linkedin?: string;
-  website?: string;
   contact_source?: string;
-  industry?: string;
-  region?: string;
   description?: string;
   tags?: string[];
 }
@@ -124,6 +110,19 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountSearch, setAccountSearch] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [users, setUsers] = useState<{ id: string; full_name: string | null }[]>([]);
+  
+  // Merge modal state
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState<string>("");
+
+  // Handler for when a new account is created
+  const handleAccountCreated = (newAccount: Account) => {
+    setAccounts(prev => [...prev, newAccount].sort((a, b) => a.company_name.localeCompare(b.company_name)));
+    form.setValue('account_id', newAccount.id);
+    setAccountModalOpen(false);
+  };
 
   // Duplicate detection for contacts
   const { duplicates, isChecking, checkDuplicates, clearDuplicates } = useDuplicateDetection({
@@ -166,24 +165,28 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
       linkedin: "",
       contact_source: "",
       description: "",
+      contact_owner: "",
     },
   });
 
-  // Fetch accounts for dropdown
+  // Fetch accounts and users for dropdowns
   useEffect(() => {
-    const fetchAccounts = async () => {
-      const { data, error } = await supabase
-        .from('accounts')
-        .select('id, company_name')
-        .order('company_name', { ascending: true });
+    const fetchData = async () => {
+      const [accountsResult, usersResult] = await Promise.all([
+        supabase.from('accounts').select('id, company_name').order('company_name', { ascending: true }),
+        supabase.from('profiles').select('id, full_name').order('full_name', { ascending: true })
+      ]);
       
-      if (!error && data) {
-        setAccounts(data);
+      if (!accountsResult.error && accountsResult.data) {
+        setAccounts(accountsResult.data);
+      }
+      if (!usersResult.error && usersResult.data) {
+        setUsers(usersResult.data);
       }
     };
     
     if (open) {
-      fetchAccounts();
+      fetchData();
     }
   }, [open]);
 
@@ -198,6 +201,7 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
         linkedin: contact.linkedin || "",
         contact_source: contact.contact_source || "",
         description: contact.description || "",
+        contact_owner: (contact as any).contact_owner || "",
       });
       setSelectedTags(contact.tags || []);
     } else {
@@ -210,6 +214,7 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
         linkedin: "",
         contact_source: "",
         description: "",
+        contact_owner: "",
       });
       setSelectedTags([]);
     }
@@ -229,6 +234,25 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
         return;
       }
 
+      // Check for exact email duplicate (blocking)
+      if (data.email && !contact) {
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id, contact_name')
+          .ilike('email', data.email)
+          .maybeSingle();
+        
+        if (existingContact) {
+          toast({
+            title: "Duplicate Email",
+            description: `This email already exists in Contacts (${existingContact.contact_name}). Please use a different email.`,
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
       // Get company_name from selected account
       const selectedAccount = accounts.find(acc => acc.id === data.account_id);
       
@@ -240,13 +264,12 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
         email: data.email || null,
         phone_no: data.phone_no || null,
         linkedin: data.linkedin ? normalizeUrl(data.linkedin) : null,
-        website: data.website ? normalizeUrl(data.website) : null,
         contact_source: data.contact_source || null,
         description: data.description || null,
         tags: selectedTags,
         created_by: user.data.user.id,
         modified_by: user.data.user.id,
-        contact_owner: user.data.user.id,
+        contact_owner: data.contact_owner || user.data.user.id,
       };
 
       if (contact) {
@@ -305,7 +328,7 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" disableOutsidePointerEvents={false}>
         <DialogHeader>
           <DialogTitle>
             {contact ? "Edit Contact" : "Add New Contact"}
@@ -313,13 +336,21 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
             {/* Duplicate Warning */}
             {!contact && duplicates.length > 0 && (
-              <DuplicateWarning duplicates={duplicates} entityType="contact" />
+              <DuplicateWarning 
+                duplicates={duplicates} 
+                entityType="contact"
+                onMerge={(duplicateId) => {
+                  setMergeTargetId(duplicateId);
+                  setMergeModalOpen(true);
+                }}
+                preventCreation={duplicates.some(d => d.matchType === "exact")}
+              />
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <FormField
                 control={form.control}
                 name="contact_name"
@@ -328,7 +359,7 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
                     <FormLabel>Contact Name *</FormLabel>
                     <FormControl>
                       <Input 
-                        placeholder="Contact Name" 
+                        placeholder="e.g., Jane Doe"
                         {...field}
                         onChange={(e) => {
                           field.onChange(e);
@@ -350,17 +381,38 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select account" />
+                          <SelectValue placeholder="Select account..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <div className="px-2 py-1">
+                        <div className="px-2 py-1 flex gap-1">
                           <Input
                             placeholder="Search accounts..."
                             value={accountSearch}
                             onChange={(e) => setAccountSearch(e.target.value)}
                             inputSize="control"
+                            className="flex-1"
                           />
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8 shrink-0"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setAccountModalOpen(true);
+                                  }}
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Add new account</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                         {filteredAccounts.map((account) => (
                           <SelectItem key={account.id} value={account.id}>
@@ -386,7 +438,7 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
                   <FormItem>
                     <FormLabel>Position</FormLabel>
                     <FormControl>
-                      <Input placeholder="CEO" {...field} />
+                      <Input placeholder="e.g., CEO, Sales Manager" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -402,7 +454,7 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
                     <FormControl>
                       <Input 
                         type="email" 
-                        placeholder="email@example.com" 
+                        placeholder="e.g., name@company.com" 
                         {...field}
                         onChange={(e) => {
                           field.onChange(e);
@@ -452,13 +504,38 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select source" />
+                          <SelectValue placeholder="Select source..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         {contactSources.map((source) => (
                           <SelectItem key={source} value={source}>
                             {source}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="contact_owner"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Contact Owner</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select owner..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {users.map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.full_name || 'Unknown User'}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -549,7 +626,7 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
               <Button type="submit" disabled={loading}>
                 {loading ? (
                   <>
-                    <span className="animate-spin mr-2">⏳</span>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     {contact ? "Saving..." : "Creating..."}
                   </>
                 ) : contact ? "Save Changes" : "Add Contact"}
@@ -558,6 +635,32 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
           </form>
         </Form>
       </DialogContent>
+
+      {/* Nested Account Modal */}
+      <AccountModal
+        open={accountModalOpen}
+        onOpenChange={setAccountModalOpen}
+        onSuccess={() => {}}
+        onCreated={handleAccountCreated}
+      />
+
+      {/* Merge Modal */}
+      {mergeTargetId && (
+        <MergeRecordsModal
+          open={mergeModalOpen}
+          onOpenChange={(open) => {
+            setMergeModalOpen(open);
+            if (!open) setMergeTargetId("");
+          }}
+          entityType="contacts"
+          sourceId=""
+          targetId={mergeTargetId}
+          onSuccess={() => {
+            onSuccess();
+            onOpenChange(false);
+          }}
+        />
+      )}
     </Dialog>
   );
 };

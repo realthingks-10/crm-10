@@ -40,11 +40,32 @@ export const MeetingColumnCustomizer = ({
   onSave,
   isSaving = false,
 }: MeetingColumnCustomizerProps) => {
-  const [localColumns, setLocalColumns] = useState<MeetingColumnConfig[]>(columns);
+  // Initialize local columns only when dialog opens
+  const [localColumns, setLocalColumns] = useState<MeetingColumnConfig[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
 
+  // Sync local columns only when dialog opens (not on every columns prop change)
   useEffect(() => {
-    setLocalColumns(columns);
-  }, [columns]);
+    if (open && !isInitialized) {
+      const existingFields = new Set(columns.map(c => c.field));
+      const missingColumns = defaultMeetingColumns.filter(dc => !existingFields.has(dc.field));
+      const validColumns = columns.filter(c => 
+        defaultMeetingColumns.some(dc => dc.field === c.field)
+      );
+      
+      if (missingColumns.length > 0 || validColumns.length !== columns.length) {
+        setLocalColumns([...validColumns, ...missingColumns]);
+      } else {
+        setLocalColumns(columns);
+      }
+      setIsInitialized(true);
+    }
+    
+    // Reset initialization flag when dialog closes
+    if (!open) {
+      setIsInitialized(false);
+    }
+  }, [open, columns, isInitialized]);
 
   const handleVisibilityChange = (field: string, visible: boolean) => {
     const updatedColumns = localColumns.map(col => 

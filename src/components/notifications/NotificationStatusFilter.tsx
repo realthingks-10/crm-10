@@ -2,26 +2,24 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-interface ContactSegmentFilterProps {
+interface NotificationStatusFilterProps {
   value: string;
   onValueChange: (value: string) => void;
 }
 
-const segments = [
-  { value: "all", label: "All Segments" },
-  { value: "prospect", label: "Prospect" },
-  { value: "customer", label: "Customer" },
-  { value: "partner", label: "Partner" },
-  { value: "vendor", label: "Vendor" },
+const statuses = [
+  { value: "all", label: "All Status" },
+  { value: "unread", label: "Unread" },
+  { value: "read", label: "Read" },
 ];
 
-export const ContactSegmentFilter = ({ value, onValueChange }: ContactSegmentFilterProps) => {
+export const NotificationStatusFilter = ({ value, onValueChange }: NotificationStatusFilterProps) => {
   const isFiltered = value && value !== "all";
   
   return (
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger className={cn("w-40 relative", isFiltered && "border-primary")}>
-        <SelectValue placeholder="Filter by segment" />
+      <SelectTrigger className={cn("w-32 relative", isFiltered && "border-primary")}>
+        <SelectValue placeholder="Status" />
         {isFiltered && (
           <Badge 
             variant="default" 
@@ -32,9 +30,9 @@ export const ContactSegmentFilter = ({ value, onValueChange }: ContactSegmentFil
         )}
       </SelectTrigger>
       <SelectContent>
-        {segments.map((segment) => (
-          <SelectItem key={segment.value} value={segment.value}>
-            {segment.label}
+        {statuses.map((status) => (
+          <SelectItem key={status.value} value={status.value}>
+            {status.label}
           </SelectItem>
         ))}
       </SelectContent>
