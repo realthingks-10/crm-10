@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Deal, DealStage } from "@/types/deal";
-import { DealForm } from "@/components/DealForm";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, LayoutGrid, List, Trash2 } from "lucide-react";
@@ -16,9 +15,10 @@ import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// Lazy load heavy view components
+// Lazy load heavy view components and DealForm (which includes rich text editor)
 const KanbanBoard = lazy(() => import("@/components/KanbanBoard").then(m => ({ default: m.KanbanBoard })));
 const ListView = lazy(() => import("@/components/ListView").then(m => ({ default: m.ListView })));
+const DealForm = lazy(() => import("@/components/DealForm").then(m => ({ default: m.DealForm })));
 
 // Loading skeleton for views
 const ViewSkeleton = () => (
@@ -475,8 +475,12 @@ const DealsPage = () => {
         )}
       </div>
 
-      {/* Deal Form Modal */}
-      <DealForm deal={selectedDeal} isOpen={isFormOpen} onClose={handleCloseForm} onSave={handleSaveDeal} onRefresh={fetchDeals} isCreating={isCreating} initialStage={initialStage} />
+      {/* Deal Form Modal - Lazy loaded */}
+      {isFormOpen && (
+        <Suspense fallback={null}>
+          <DealForm deal={selectedDeal} isOpen={isFormOpen} onClose={handleCloseForm} onSave={handleSaveDeal} onRefresh={fetchDeals} isCreating={isCreating} initialStage={initialStage} />
+        </Suspense>
+      )}
 
       {/* Bulk Delete Confirmation Dialog */}
       <DeleteConfirmDialog
