@@ -607,6 +607,23 @@ const handler = async (req: Request): Promise<Response> => {
       console.log(`Looking for original message. MessageID: ${resolvedParentMessageId}, ConversationID: ${resolvedParentConversationId}`);
 
       try {
+        // Helper function to search messages in a specific folder or all messages
+        const searchMessages = async (baseUrl: string, folderName: string) => {
+          const response = await fetch(baseUrl, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.value && data.value.length > 0) {
+              console.log(`Found message in ${folderName}: ${data.value[0].id}`);
+              return data.value[0].id;
+            }
+          } else {
+            console.warn(`Failed to search in ${folderName}: ${response.status}`);
+          }
+          return null;
+        };
+
         // Strategy 1: Search by internetMessageId (most accurate)
         if (resolvedParentMessageId) {
           const safeInternetMessageId = resolvedParentMessageId.replace(/'/g, "''");
@@ -614,20 +631,20 @@ const handler = async (req: Request): Promise<Response> => {
             "$filter": `internetMessageId eq '${safeInternetMessageId}'`,
             "$select": "id,internetMessageId,conversationId",
           });
-          const searchUrl = `https://graph.microsoft.com/v1.0/users/${from}/messages?${qs.toString()}`;
-
-          const searchResponse = await fetch(searchUrl, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
           
-          if (searchResponse.ok) {
-            const searchData = await searchResponse.json();
-            if (searchData.value && searchData.value.length > 0) {
-              graphMessageId = searchData.value[0].id;
-              console.log(`Found Graph message ID via internetMessageId: ${graphMessageId}`);
-            }
-          } else {
-            console.warn(`Failed to search by internetMessageId: ${searchResponse.status}`);
+          // First try all messages (includes inbox)
+          const allMessagesUrl = `https://graph.microsoft.com/v1.0/users/${from}/messages?${qs.toString()}`;
+          graphMessageId = await searchMessages(allMessagesUrl, "all messages");
+          
+          // If not found, try Sent Items folder explicitly (sent emails are stored here)
+          if (!graphMessageId) {
+            console.log("Not found in inbox, trying Sent Items folder...");
+            const sentItemsUrl = `https://graph.microsoft.com/v1.0/users/${from}/mailFolders/SentItems/messages?${qs.toString()}`;
+            graphMessageId = await searchMessages(sentItemsUrl, "SentItems");
+          }
+          
+          if (graphMessageId) {
+            console.log(`Found Graph message ID via internetMessageId: ${graphMessageId}`);
           }
         }
 
@@ -640,27 +657,27 @@ const handler = async (req: Request): Promise<Response> => {
             "$top": "1",
             "$select": "id,internetMessageId,conversationId",
           });
-          const convSearchUrl = `https://graph.microsoft.com/v1.0/users/${from}/messages?${convQs.toString()}`;
-
-          const convSearchResponse = await fetch(convSearchUrl, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
           
-          if (convSearchResponse.ok) {
-            const convSearchData = await convSearchResponse.json();
-            if (convSearchData.value && convSearchData.value.length > 0) {
-              graphMessageId = convSearchData.value[0].id;
-              console.log(`Found Graph message ID via conversationId: ${graphMessageId}`);
-            } else {
-              console.log("No messages found by conversationId");
-            }
+          // First try all messages (includes inbox)
+          const convAllUrl = `https://graph.microsoft.com/v1.0/users/${from}/messages?${convQs.toString()}`;
+          graphMessageId = await searchMessages(convAllUrl, "all messages (conversationId)");
+          
+          // If not found, try Sent Items folder
+          if (!graphMessageId) {
+            console.log("Not found in inbox by conversationId, trying Sent Items folder...");
+            const convSentUrl = `https://graph.microsoft.com/v1.0/users/${from}/mailFolders/SentItems/messages?${convQs.toString()}`;
+            graphMessageId = await searchMessages(convSentUrl, "SentItems (conversationId)");
+          }
+          
+          if (graphMessageId) {
+            console.log(`Found Graph message ID via conversationId: ${graphMessageId}`);
           } else {
-            console.warn(`Failed to search by conversationId: ${convSearchResponse.status}`);
+            console.log("No messages found by conversationId in any folder");
           }
         }
 
         if (!graphMessageId) {
-          console.log("Original message not found in mailbox, will send as new email");
+          console.log("Original message not found in any mailbox folder, will send as new email");
         }
       } catch (searchError) {
         console.warn("Error searching for original message:", searchError);
