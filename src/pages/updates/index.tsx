@@ -1,19 +1,11 @@
-import { useState, lazy, Suspense } from "react";
+import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Monitor, Wrench, HardDrive } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
 import SystemUpdatesTab from "./components/SystemUpdatesTab";
 import MaintenanceTab from "./components/MaintenanceTab";
+import BackupsTab from "./components/BackupsTab";
 
-// Lazy load BackupsTab since it imports recharts (heavy)
-const BackupsTab = lazy(() => import("./components/BackupsTab"));
-
-const TabLoader = () => (
-  <div className="space-y-4">
-    <Skeleton className="h-8 w-48" />
-    <Skeleton className="h-64 w-full" />
-  </div>
-);
 const UpdatesPage = () => {
   const [activeTab, setActiveTab] = useState("updates");
 
@@ -52,9 +44,7 @@ const UpdatesPage = () => {
         </TabsContent>
 
         <TabsContent value="backups" className="mt-6">
-          <Suspense fallback={<TabLoader />}>
-            <BackupsTab />
-          </Suspense>
+          <BackupsTab />
         </TabsContent>
       </Tabs>
     </div>

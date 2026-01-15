@@ -1,9 +1,14 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTasks } from '@/hooks/useTasks';
 import { useAuth } from '@/hooks/useAuth';
 import { useTasksImportExport } from '@/hooks/useTasksImportExport';
 import { Task, TaskStatus, CreateTaskData, TaskModuleType, TaskModalContext } from '@/types/task';
+import { TaskModal } from '@/components/tasks/TaskModal';
+import { TaskListView } from '@/components/tasks/TaskListView';
+import { TaskKanbanView } from '@/components/tasks/TaskKanbanView';
+import { TaskCalendarView } from '@/components/tasks/TaskCalendarView';
+import { TaskColumnCustomizer } from '@/components/tasks/TaskColumnCustomizer';
 import { BulkDeleteConfirmDialog } from '@/components/shared/BulkDeleteConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -11,13 +16,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Plus, Loader2, List, LayoutGrid, CalendarDays, Trash2, Columns, Download, Upload } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-
-// Lazy load heavy view components
-const TaskListView = lazy(() => import('@/components/tasks/TaskListView').then(m => ({ default: m.TaskListView })));
-const TaskKanbanView = lazy(() => import('@/components/tasks/TaskKanbanView').then(m => ({ default: m.TaskKanbanView })));
-const TaskCalendarView = lazy(() => import('@/components/tasks/TaskCalendarView').then(m => ({ default: m.TaskCalendarView })));
-const TaskModal = lazy(() => import('@/components/tasks/TaskModal').then(m => ({ default: m.TaskModal })));
-const TaskColumnCustomizer = lazy(() => import('@/components/tasks/TaskColumnCustomizer').then(m => ({ default: m.TaskColumnCustomizer })));
 
 interface ColumnPreference {
   visible_columns: string[];
@@ -383,12 +381,7 @@ const Tasks = () => {
             <div className="h-64 bg-muted animate-pulse rounded" />
           </div>
         ) : (
-          <Suspense fallback={
-            <div className="space-y-4">
-              <div className="h-10 bg-muted animate-pulse rounded" />
-              <div className="h-64 bg-muted animate-pulse rounded" />
-            </div>
-          }>
+          <>
             {viewMode === 'list' && (
               <TaskListView 
                 tasks={tasks} 
@@ -418,30 +411,22 @@ const Tasks = () => {
                 onEdit={handleEdit}
               />
             )}
-          </Suspense>
+          </>
         )}
       </div>
 
-      {/* Task Modal - Lazy loaded */}
-      {showModal && (
-        <Suspense fallback={null}>
-          <TaskModal 
-            open={showModal} 
-            onOpenChange={handleCloseModal} 
-            task={editingTask} 
-            onSubmit={handleTaskSubmit} 
-            onUpdate={handleTaskUpdate}
-            context={prefillContext}
-          />
-        </Suspense>
-      )}
+      {/* Task Modal */}
+      <TaskModal 
+        open={showModal} 
+        onOpenChange={handleCloseModal} 
+        task={editingTask} 
+        onSubmit={handleTaskSubmit} 
+        onUpdate={handleTaskUpdate}
+        context={prefillContext}
+      />
 
-      {/* Column Customizer - Lazy loaded */}
-      {showColumnCustomizer && (
-        <Suspense fallback={null}>
-          <TaskColumnCustomizer open={showColumnCustomizer} onOpenChange={setShowColumnCustomizer} onColumnsChange={handleColumnsChange} />
-        </Suspense>
-      )}
+      {/* Column Customizer */}
+      <TaskColumnCustomizer open={showColumnCustomizer} onOpenChange={setShowColumnCustomizer} onColumnsChange={handleColumnsChange} />
 
       {/* Single Delete Confirmation */}
       <AlertDialog open={!!deleteTaskId} onOpenChange={() => setDeleteTaskId(null)}>

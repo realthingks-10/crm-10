@@ -946,6 +946,7 @@ export type Database = {
           click_count: number | null
           clicked_at: string | null
           contact_id: string | null
+          conversation_id: string | null
           created_at: string
           delivered_at: string | null
           first_open_ip: string | null
@@ -980,6 +981,7 @@ export type Database = {
           click_count?: number | null
           clicked_at?: string | null
           contact_id?: string | null
+          conversation_id?: string | null
           created_at?: string
           delivered_at?: string | null
           first_open_ip?: string | null
@@ -1014,6 +1016,7 @@ export type Database = {
           click_count?: number | null
           clicked_at?: string | null
           contact_id?: string | null
+          conversation_id?: string | null
           created_at?: string
           delivered_at?: string | null
           first_open_ip?: string | null

@@ -3,16 +3,13 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Settings, Trash2, Upload, Download, Mail, Plus } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useState, useRef, lazy, Suspense } from "react";
+import { useState, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useSimpleContactsImportExport } from "@/hooks/useSimpleContactsImportExport";
-import type { BulkEmailRecipient } from "@/components/BulkEmailModal";
+import { BulkEmailModal, BulkEmailRecipient } from "@/components/BulkEmailModal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-
-// Lazy load heavy modal component
-const BulkEmailModal = lazy(() => import("@/components/BulkEmailModal").then(m => ({ default: m.BulkEmailModal })));
 
 const Contacts = () => {
   const { toast } = useToast();
@@ -221,19 +218,15 @@ const Contacts = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Bulk Email Modal - Lazy loaded */}
-      {showBulkEmailModal && (
-        <Suspense fallback={null}>
-          <BulkEmailModal
-            open={showBulkEmailModal}
-            onOpenChange={setShowBulkEmailModal}
-            recipients={bulkEmailRecipients}
-            onEmailsSent={() => {
-              setSelectedContacts([]);
-            }}
-          />
-        </Suspense>
-      )}
+      {/* Bulk Email Modal */}
+      <BulkEmailModal
+        open={showBulkEmailModal}
+        onOpenChange={setShowBulkEmailModal}
+        recipients={bulkEmailRecipients}
+        onEmailsSent={() => {
+          setSelectedContacts([]);
+        }}
+      />
     </div>
   );
 };

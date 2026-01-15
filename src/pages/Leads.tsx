@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense } from "react";
+import { useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -9,10 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useSimpleLeadsImportExport } from "@/hooks/useSimpleLeadsImportExport";
 import { LeadDeleteConfirmDialog } from "@/components/LeadDeleteConfirmDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import type { BulkEmailRecipient } from "@/components/BulkEmailModal";
-
-// Lazy load heavy modal component
-const BulkEmailModal = lazy(() => import("@/components/BulkEmailModal").then(m => ({ default: m.BulkEmailModal })));
+import { BulkEmailModal, BulkEmailRecipient } from "@/components/BulkEmailModal";
 
 // Leads page component
 const Leads = () => {
@@ -212,19 +209,15 @@ const Leads = () => {
         count={selectedLeads.length} 
       />
 
-      {/* Bulk Email Modal - Lazy loaded */}
-      {showBulkEmailModal && (
-        <Suspense fallback={null}>
-          <BulkEmailModal
-            open={showBulkEmailModal}
-            onOpenChange={setShowBulkEmailModal}
-            recipients={bulkEmailRecipients}
-            onEmailsSent={() => {
-              setSelectedLeads([]);
-            }}
-          />
-        </Suspense>
-      )}
+      {/* Bulk Email Modal */}
+      <BulkEmailModal
+        open={showBulkEmailModal}
+        onOpenChange={setShowBulkEmailModal}
+        recipients={bulkEmailRecipients}
+        onEmailsSent={() => {
+          setSelectedLeads([]);
+        }}
+      />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, useMemo, useState, useEffect } from 'react';
+import React, { createContext, useContext, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -51,57 +51,45 @@ interface PermissionsProviderProps {
   children: React.ReactNode;
 }
 
-// Default snapshot to use as fallback
-const DEFAULT_SNAPSHOT: AccessSnapshot = {
-  role: 'user',
-  permissions: [],
-  profile: {},
-  computed_at: new Date().toISOString()
-};
-
 export const PermissionsProvider = ({ children }: PermissionsProviderProps) => {
   const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
-  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
 
   // Use React Query with the new RPC for access snapshot
   // 24 hour staleTime - the RPC handles version checking internally
-  const { data: snapshot, isLoading: snapshotLoading, error: snapshotError } = useQuery({
+  const { data: snapshot, isLoading: snapshotLoading } = useQuery({
     queryKey: ['access-snapshot', user?.id],
     queryFn: async () => {
-      // Add a timeout wrapper to prevent hanging
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Snapshot fetch timeout')), 10000);
-      });
-
-      const fetchPromise = (async () => {
-        const { data, error } = await supabase.rpc('get_my_access_snapshot');
-        
-        if (error) {
-          console.error('Error fetching access snapshot:', error);
-          return DEFAULT_SNAPSHOT;
-        }
-
-        // RPC returns an array with one row
-        const result = data?.[0];
-        if (!result) {
-          return DEFAULT_SNAPSHOT;
-        }
-
+      const { data, error } = await supabase.rpc('get_my_access_snapshot');
+      
+      if (error) {
+        console.error('Error fetching access snapshot:', error);
+        // Fallback to default permissions
         return {
-          role: result.role || 'user',
-          permissions: Array.isArray(result.permissions) ? (result.permissions as unknown as PagePermission[]) : [],
-          profile: (result.profile || {}) as AccessSnapshot['profile'],
-          computed_at: result.computed_at
+          role: 'user',
+          permissions: [],
+          profile: {},
+          computed_at: new Date().toISOString()
         } as AccessSnapshot;
-      })();
-
-      try {
-        return await Promise.race([fetchPromise, timeoutPromise]);
-      } catch (error) {
-        console.error('Access snapshot fetch failed or timed out:', error);
-        return DEFAULT_SNAPSHOT;
       }
+
+      // RPC returns an array with one row
+      const result = data?.[0];
+      if (!result) {
+        return {
+          role: 'user',
+          permissions: [],
+          profile: {},
+          computed_at: new Date().toISOString()
+        } as AccessSnapshot;
+      }
+
+      return {
+        role: result.role || 'user',
+        permissions: Array.isArray(result.permissions) ? (result.permissions as unknown as PagePermission[]) : [],
+        profile: (result.profile || {}) as AccessSnapshot['profile'],
+        computed_at: result.computed_at
+      } as AccessSnapshot;
     },
     enabled: !!user,
     staleTime: 24 * 60 * 60 * 1000, // 24 hours - RPC handles version invalidation
@@ -110,20 +98,6 @@ export const PermissionsProvider = ({ children }: PermissionsProviderProps) => {
     refetchOnMount: false,
     retry: 1,
   });
-
-  // Safety timeout: if loading takes more than 8 seconds, stop showing loading state
-  useEffect(() => {
-    if (!authLoading && snapshotLoading && user) {
-      const timer = setTimeout(() => {
-        console.warn('Permissions loading timed out, using defaults');
-        setLoadingTimedOut(true);
-      }, 8000);
-      
-      return () => clearTimeout(timer);
-    } else {
-      setLoadingTimedOut(false);
-    }
-  }, [authLoading, snapshotLoading, user]);
 
   const userRole = snapshot?.role || 'user';
   const permissions = snapshot?.permissions || [];
@@ -162,8 +136,7 @@ export const PermissionsProvider = ({ children }: PermissionsProviderProps) => {
   const isManager = userRole === 'manager';
 
   // Only show loading on initial load when there's no cached data
-  // Also respect the timeout to prevent infinite loading
-  const loading = authLoading || (snapshotLoading && !snapshot && !loadingTimedOut);
+  const loading = authLoading || (snapshotLoading && !snapshot);
 
   const value = useMemo(() => ({
     userRole,

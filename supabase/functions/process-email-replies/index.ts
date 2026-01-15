@@ -45,6 +45,7 @@ interface ReplyInfo {
   received_at: string;
   graph_message_id: string;
   in_reply_to: string | null;
+  conversation_id: string | null;
 }
 
 async function fetchInboxReplies(
@@ -53,10 +54,12 @@ async function fetchInboxReplies(
   sinceDate: string
 ): Promise<ReplyInfo[]> {
   const replies: ReplyInfo[] = [];
+  const senderEmailLower = senderEmail.toLowerCase();
   
   try {
-    // Fetch recent messages from inbox with headers
-    const searchUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(senderEmail)}/mailFolders/Inbox/messages?$filter=receivedDateTime ge ${sinceDate}&$select=id,subject,from,receivedDateTime,bodyPreview,internetMessageHeaders,conversationId&$top=100&$orderby=receivedDateTime desc`;
+    // Fetch recent messages from inbox with headers AND recipients
+    // Added toRecipients and ccRecipients to verify the message was sent TO this mailbox
+    const searchUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(senderEmail)}/mailFolders/Inbox/messages?$filter=receivedDateTime ge ${sinceDate}&$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,internetMessageHeaders,conversationId&$top=100&$orderby=receivedDateTime desc`;
 
     const response = await fetch(searchUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -71,14 +74,54 @@ async function fetchInboxReplies(
     const messagesData = await response.json();
     const messages = messagesData.value || [];
     
+    console.log(`Processing ${messages.length} inbox messages for ${senderEmail}`);
+    
     for (const msg of messages) {
+      const fromEmail = (msg.from?.emailAddress?.address || '').toLowerCase();
+      
+      // CRITICAL FIX: Skip self-sent messages (sent by the same mailbox owner)
+      // This prevents treating our own sent emails as "received" replies
+      if (fromEmail === senderEmailLower) {
+        console.log(`⏭️ Skipping self-sent message: ${msg.subject?.substring(0, 50)}`);
+        continue;
+      }
+      
+      // Verify the message was addressed TO this mailbox (not just in inbox due to forwarding/rules)
+      const toRecipients = msg.toRecipients || [];
+      const ccRecipients = msg.ccRecipients || [];
+      const allRecipients = [...toRecipients, ...ccRecipients];
+      const isAddressedToSender = allRecipients.some(
+        (r: any) => r.emailAddress?.address?.toLowerCase() === senderEmailLower
+      );
+      
+      if (!isAddressedToSender) {
+        console.log(`⏭️ Skipping message not addressed to ${senderEmail}: ${msg.subject?.substring(0, 50)}`);
+        continue;
+      }
+      
       // Look for In-Reply-To or References header
       const headers = msg.internetMessageHeaders || [];
       const inReplyTo = headers.find((h: any) => h.name.toLowerCase() === 'in-reply-to')?.value;
       const references = headers.find((h: any) => h.name.toLowerCase() === 'references')?.value;
       
-      // Skip messages without reply headers (not replies)
-      if (!inReplyTo && !references) continue;
+      // Get the conversationId for fallback matching
+      const conversationId = msg.conversationId || null;
+      
+      // Require reply headers (In-Reply-To or References) to identify as a reply
+      // Only use conversationId as fallback if subject starts with "Re:" or "RE:"
+      const hasReplyHeaders = !!inReplyTo || !!references;
+      const hasReSubject = msg.subject && /^re:/i.test(msg.subject.trim());
+      
+      if (!hasReplyHeaders && !conversationId) {
+        console.log(`⏭️ Skipping non-reply message (no headers, no conversationId): ${msg.subject?.substring(0, 50)}`);
+        continue;
+      }
+      
+      // If no reply headers but has conversationId, only include if subject starts with "Re:"
+      if (!hasReplyHeaders && conversationId && !hasReSubject) {
+        console.log(`⏭️ Skipping message with conversationId but no Re: subject: ${msg.subject?.substring(0, 50)}`);
+        continue;
+      }
       
       // Extract the message ID being replied to
       let replyToMessageId = inReplyTo;
@@ -88,20 +131,23 @@ async function fetchInboxReplies(
         replyToMessageId = refList[refList.length - 1];
       }
       
+      // Clean the message ID (remove angle brackets if present)
       if (replyToMessageId) {
-        // Clean the message ID (remove angle brackets if present)
         replyToMessageId = replyToMessageId.replace(/^<|>$/g, '');
-        
-        replies.push({
-          from_email: msg.from?.emailAddress?.address || '',
-          from_name: msg.from?.emailAddress?.name || null,
-          subject: msg.subject || '',
-          body_preview: (msg.bodyPreview || '').substring(0, 500),
-          received_at: msg.receivedDateTime,
-          graph_message_id: msg.id,
-          in_reply_to: replyToMessageId,
-        });
       }
+      
+      console.log(`✅ Valid reply candidate from ${fromEmail}: ${msg.subject?.substring(0, 50)}`);
+      
+      replies.push({
+        from_email: msg.from?.emailAddress?.address || '',
+        from_name: msg.from?.emailAddress?.name || null,
+        subject: msg.subject || '',
+        body_preview: (msg.bodyPreview || '').substring(0, 500),
+        received_at: msg.receivedDateTime,
+        graph_message_id: msg.id,
+        in_reply_to: replyToMessageId || null,
+        conversation_id: conversationId,
+      });
     }
   } catch (error) {
     console.error(`Error fetching inbox for ${senderEmail}:`, error);
@@ -147,9 +193,8 @@ serve(async (req: Request) => {
     
     const { data: sentEmails, error: sentError } = await supabase
       .from('email_history')
-      .select('id, sender_email, recipient_email, subject, message_id, sent_by, reply_count, sent_at')
+      .select('id, sender_email, recipient_email, subject, message_id, conversation_id, sent_by, reply_count, sent_at')
       .gte('sent_at', sinceDate)
-      .not('message_id', 'is', null)
       .not('status', 'eq', 'bounced')
       .order('sent_at', { ascending: false });
 
@@ -201,52 +246,77 @@ serve(async (req: Request) => {
     }
 
     let totalRepliesFound = 0;
+    let skippedSelfReplies = 0;
     const processedReplies: string[] = [];
 
     for (const [senderEmail, emails] of emailsBySender.entries()) {
       console.log(`Checking replies for ${senderEmail} (${emails.length} sent emails)`);
       
       const replies = await fetchInboxReplies(accessToken, senderEmail, sinceDate);
-      console.log(`Found ${replies.length} potential replies in inbox`);
+      console.log(`Found ${replies.length} valid reply candidates in inbox`);
       
-      // Create a map of message_id to email for quick lookup
+      // Create maps for quick lookup
       const messageIdToEmail = new Map<string, typeof emails[0]>();
+      const conversationIdToEmail = new Map<string, typeof emails[0]>();
+      
       for (const email of emails) {
         if (email.message_id) {
           // Store both with and without angle brackets
           messageIdToEmail.set(email.message_id, email);
           messageIdToEmail.set(email.message_id.replace(/^<|>$/g, ''), email);
         }
+        // Also index by conversation_id for fallback matching
+        if (email.conversation_id) {
+          conversationIdToEmail.set(email.conversation_id, email);
+        }
       }
       
       for (const reply of replies) {
-        if (!reply.in_reply_to) continue;
+        let originalEmail: typeof emails[0] | undefined = undefined;
         
-        // Debug: log what we're trying to match
-        console.log(`Trying to match reply In-Reply-To: ${reply.in_reply_to}`);
-        console.log(`Available message_ids: ${Array.from(messageIdToEmail.keys()).slice(0, 5).join(', ')}...`);
-        
-        // Try to match the reply to a sent email (try multiple formats)
-        let originalEmail = messageIdToEmail.get(reply.in_reply_to);
-        
-        if (!originalEmail) {
-          // Try with angle brackets
-          originalEmail = messageIdToEmail.get(`<${reply.in_reply_to}>`);
+        // First, try to match by In-Reply-To message ID (most reliable)
+        if (reply.in_reply_to) {
+          console.log(`Trying to match reply In-Reply-To: ${reply.in_reply_to}`);
+          
+          originalEmail = messageIdToEmail.get(reply.in_reply_to);
+          
+          if (!originalEmail) {
+            // Try with angle brackets
+            originalEmail = messageIdToEmail.get(`<${reply.in_reply_to}>`);
+          }
+          
+          if (!originalEmail) {
+            // Try without angle brackets
+            const cleanedId = reply.in_reply_to.replace(/^<|>$/g, '');
+            originalEmail = messageIdToEmail.get(cleanedId);
+          }
         }
         
-        if (!originalEmail) {
-          // Try without angle brackets
-          const cleanedId = reply.in_reply_to.replace(/^<|>$/g, '');
-          originalEmail = messageIdToEmail.get(cleanedId);
+        // Fallback: Match by conversationId if In-Reply-To matching failed
+        if (!originalEmail && reply.conversation_id) {
+          console.log(`Fallback: Trying to match by conversationId: ${reply.conversation_id}`);
+          originalEmail = conversationIdToEmail.get(reply.conversation_id);
+          
+          if (originalEmail) {
+            console.log(`✅ Matched via conversationId to email: ${originalEmail.id}`);
+          }
         }
         
         if (originalEmail) {
           console.log(`✅ Found matching email: ${originalEmail.id}`);
-        } else {
-          console.log(`❌ No match found for In-Reply-To: ${reply.in_reply_to}`);
+        } else if (reply.in_reply_to || reply.conversation_id) {
+          console.log(`❌ No match found for In-Reply-To: ${reply.in_reply_to}, conversationId: ${reply.conversation_id}`);
         }
         
         if (originalEmail) {
+          // CRITICAL SAFETY CHECK: Never insert a reply where from_email equals sender_email
+          // This is a final guard against self-replies
+          if (reply.from_email.toLowerCase() === originalEmail.sender_email.toLowerCase()) {
+            console.log(`🚫 BLOCKED: Self-reply detected - from: ${reply.from_email}, sender: ${originalEmail.sender_email}`);
+            skippedSelfReplies++;
+            continue;
+          }
+          
           // Check if we already have this reply
           const { data: existingReply } = await supabase
             .from('email_replies')
@@ -329,13 +399,14 @@ serve(async (req: Request) => {
     const processingTime = Date.now() - startTime;
 
     console.log("=".repeat(50));
-    console.log(`Reply check complete in ${processingTime}ms. Found ${totalRepliesFound} new reply(s).`);
+    console.log(`Reply check complete in ${processingTime}ms. Found ${totalRepliesFound} new reply(s). Blocked ${skippedSelfReplies} self-replies.`);
     console.log("=".repeat(50));
 
     return new Response(JSON.stringify({
       success: true,
       emailsChecked: sentEmails.length,
       repliesFound: totalRepliesFound,
+      skippedSelfReplies,
       processedReplies,
       processingTimeMs: processingTime,
       message: totalRepliesFound > 0 

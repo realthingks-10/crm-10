@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Activity, 
@@ -13,14 +12,12 @@ import {
   ExternalLink,
   Play,
   Calendar,
-  Zap,
   Timer,
   Copy,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
 import { format, formatDistanceToNow, differenceInHours } from 'date-fns';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -50,7 +47,6 @@ const CronJobMonitoring = ({ embedded = false }: CronJobMonitoringProps) => {
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const keepAliveEndpoint = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/keep-alive`;
@@ -99,8 +95,6 @@ const CronJobMonitoring = ({ embedded = false }: CronJobMonitoringProps) => {
       } else {
         setKeepAlive({ lastPing: null, status: 'never_used', hoursAgo: null });
       }
-      
-      setLastRefresh(new Date());
     } catch (error) {
       console.error('Error fetching keep-alive:', error);
       setKeepAlive({ lastPing: null, status: 'error', hoursAgo: null });

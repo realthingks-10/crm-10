@@ -26,6 +26,7 @@ interface EmailRequest {
   threadId?: string; // Thread grouping ID
   isReply?: boolean; // Whether this is a reply
   parentMessageId?: string; // Internet Message-ID of parent for email headers
+  parentConversationId?: string; // Outlook conversation ID for proper threading
 }
 
 async function getAccessToken(): Promise<string> {
@@ -172,32 +173,33 @@ function rewriteLinksForTracking(html: string, emailHistoryId: string, supabaseU
   });
 }
 
-async function sendEmail(
-  accessToken: string, 
-  emailRequest: EmailRequest, 
-  emailHistoryId: string,
-  parentMessageId?: string | null
+// Send a new email (not a reply)
+async function sendNewEmail(
+  accessToken: string,
+  emailRequest: EmailRequest,
+  emailHistoryId: string
 ): Promise<void> {
   const graphUrl = `https://graph.microsoft.com/v1.0/users/${emailRequest.from}/sendMail`;
 
   // Build attachments array for Microsoft Graph API
-  const attachments = emailRequest.attachments?.map(att => ({
-    "@odata.type": "#microsoft.graph.fileAttachment",
-    name: att.name,
-    contentType: att.contentType,
-    contentBytes: att.contentBytes,
-  })) || [];
+  const attachments =
+    emailRequest.attachments?.map((att) => ({
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      name: att.name,
+      contentType: att.contentType,
+      contentBytes: att.contentBytes,
+    })) || [];
 
   // Generate tracking pixel URL for open tracking
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const trackingPixelUrl = `${supabaseUrl}/functions/v1/track-email-open?id=${emailHistoryId}`;
-  
+
   // Wrap the content with proper inline styles for email clients
   const wrappedBody = wrapEmailContent(emailRequest.body);
-  
+
   // Rewrite links for click tracking
   const bodyWithClickTracking = rewriteLinksForTracking(wrappedBody, emailHistoryId, supabaseUrl);
-  
+
   // Embed tracking pixel in email body (append to HTML content)
   const trackingPixel = `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none;" alt="" />`;
   const bodyWithTracking = bodyWithClickTracking + trackingPixel;
@@ -221,28 +223,15 @@ async function sendEmail(
     saveToSentItems: true,
   };
 
-  // Add threading headers for replies (so email clients group them together)
-  if (emailRequest.isReply && parentMessageId) {
-    emailPayload.message.internetMessageHeaders = [
-      {
-        name: "In-Reply-To",
-        value: parentMessageId,
-      },
-      {
-        name: "References",
-        value: parentMessageId,
-      },
-    ];
-    console.log(`Adding threading headers: In-Reply-To: ${parentMessageId}`);
-  }
-
   // Add attachments if present
   if (attachments.length > 0) {
     emailPayload.message.attachments = attachments;
     console.log(`Adding ${attachments.length} attachment(s) to email`);
   }
 
-  console.log(`Sending email to ${emailRequest.to} with open tracking...`);
+  console.log(
+    `Sending ${emailRequest.isReply ? "reply" : "new"} email to ${emailRequest.to} with open tracking...`
+  );
 
   const response = await fetch(graphUrl, {
     method: "POST",
@@ -259,7 +248,206 @@ async function sendEmail(
     throw new Error(`Failed to send email: ${response.status} ${errorText}`);
   }
 
-  console.log("Email sent successfully with open tracking embedded");
+  console.log("Email sent successfully (sendMail) with tracking embedded");
+}
+
+// Send a reply email using Microsoft Graph's direct /reply action for proper threading
+// This uses POST /messages/{id}/reply which only requires Mail.Send permission
+async function sendReplyEmail(
+  accessToken: string,
+  emailRequest: EmailRequest,
+  emailHistoryId: string,
+  originalGraphMessageId: string
+): Promise<void> {
+  const senderEmail = emailRequest.from;
+  
+  console.log(`Sending reply using Graph /reply action. Original message ID: ${originalGraphMessageId}`);
+  
+  // Generate tracking URLs
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const trackingPixelUrl = `${supabaseUrl}/functions/v1/track-email-open?id=${emailHistoryId}`;
+  
+  // Wrap the content with proper inline styles for email clients
+  const wrappedBody = wrapEmailContent(emailRequest.body);
+  
+  // Rewrite links for click tracking
+  const bodyWithClickTracking = rewriteLinksForTracking(wrappedBody, emailHistoryId, supabaseUrl);
+  
+  // Embed tracking pixel in email body
+  const trackingPixel = `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none;" alt="" />`;
+  const bodyWithTracking = bodyWithClickTracking + trackingPixel;
+
+  // Check if we have attachments - if so, we'll need a different approach
+  const hasAttachments = emailRequest.attachments && emailRequest.attachments.length > 0;
+  
+  if (hasAttachments) {
+    // For attachments, we need to use createReply (draft) approach
+    // This requires Mail.ReadWrite permission
+    console.log(`Reply has ${emailRequest.attachments!.length} attachment(s), using createReply approach`);
+    await sendReplyWithAttachments(accessToken, emailRequest, emailHistoryId, originalGraphMessageId, bodyWithTracking);
+    return;
+  }
+
+  // Use the direct /reply endpoint (sends immediately, only requires Mail.Send)
+  // POST /users/{user}/messages/{messageId}/reply
+  const replyUrl = `https://graph.microsoft.com/v1.0/users/${senderEmail}/messages/${originalGraphMessageId}/reply`;
+  
+  console.log(`Calling direct /reply endpoint: POST ${replyUrl}`);
+  
+  // The /reply endpoint accepts a "message" object to customize the reply
+  // and a "comment" for simple text. We use "message" for full control.
+  const replyPayload = {
+    message: {
+      body: {
+        contentType: "HTML",
+        content: bodyWithTracking,
+      },
+      toRecipients: [
+        {
+          emailAddress: {
+            address: emailRequest.to,
+            name: emailRequest.toName || emailRequest.to,
+          },
+        },
+      ],
+    },
+  };
+
+  const response = await fetch(replyUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(replyPayload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Failed to send reply via /reply endpoint:", errorText);
+    throw new Error(`Failed to send reply: ${response.status} ${errorText}`);
+  }
+
+  console.log("Reply sent successfully via /reply endpoint with proper Outlook threading!");
+}
+
+// Send reply with attachments using createReply (draft) approach
+// This requires Mail.ReadWrite permission
+async function sendReplyWithAttachments(
+  accessToken: string,
+  emailRequest: EmailRequest,
+  emailHistoryId: string,
+  originalGraphMessageId: string,
+  bodyWithTracking: string
+): Promise<void> {
+  const senderEmail = emailRequest.from;
+  
+  // Build attachments array for Microsoft Graph API
+  const attachments = emailRequest.attachments?.map(att => ({
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: att.name,
+    contentType: att.contentType,
+    contentBytes: att.contentBytes,
+  })) || [];
+
+  // Step 1: Create a reply draft using the createReply endpoint
+  const createReplyUrl = `https://graph.microsoft.com/v1.0/users/${senderEmail}/messages/${originalGraphMessageId}/createReply`;
+  
+  console.log(`Creating reply draft via: ${createReplyUrl}`);
+  
+  const createReplyResponse = await fetch(createReplyUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      comment: "", // We'll set the body ourselves
+    }),
+  });
+
+  if (!createReplyResponse.ok) {
+    const errorText = await createReplyResponse.text();
+    console.error("Failed to create reply draft:", errorText);
+    throw new Error(`Failed to create reply draft: ${createReplyResponse.status} ${errorText}`);
+  }
+
+  const draftMessage = await createReplyResponse.json();
+  const draftId = draftMessage.id;
+  console.log(`Created reply draft with ID: ${draftId}`);
+
+  // Step 2: Update the draft with our body content
+  const updateUrl = `https://graph.microsoft.com/v1.0/users/${senderEmail}/messages/${draftId}`;
+  
+  const updatePayload: any = {
+    body: {
+      contentType: "HTML",
+      content: bodyWithTracking,
+    },
+    toRecipients: [
+      {
+        emailAddress: {
+          address: emailRequest.to,
+          name: emailRequest.toName || emailRequest.to,
+        },
+      },
+    ],
+  };
+
+  const updateResponse = await fetch(updateUrl, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(updatePayload),
+  });
+
+  if (!updateResponse.ok) {
+    const errorText = await updateResponse.text();
+    console.error("Failed to update reply draft:", errorText);
+    throw new Error(`Failed to update reply draft: ${updateResponse.status} ${errorText}`);
+  }
+
+  console.log("Updated reply draft with body content");
+
+  // Step 3: Add attachments
+  console.log(`Adding ${attachments.length} attachment(s) to reply...`);
+  for (const attachment of attachments) {
+    const attachmentUrl = `https://graph.microsoft.com/v1.0/users/${senderEmail}/messages/${draftId}/attachments`;
+    
+    const attachResponse = await fetch(attachmentUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(attachment),
+    });
+
+    if (!attachResponse.ok) {
+      const errorText = await attachResponse.text();
+      console.warn(`Failed to add attachment ${attachment.name}:`, errorText);
+    }
+  }
+
+  // Step 4: Send the draft
+  const sendUrl = `https://graph.microsoft.com/v1.0/users/${senderEmail}/messages/${draftId}/send`;
+  
+  const sendResponse = await fetch(sendUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!sendResponse.ok) {
+    const errorText = await sendResponse.text();
+    console.error("Failed to send reply draft:", errorText);
+    throw new Error(`Failed to send reply: ${sendResponse.status} ${errorText}`);
+  }
+
+  console.log("Reply with attachments sent successfully via createReply/send!");
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -271,7 +459,7 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const { 
       to, subject, body, toName, from, attachments, entityType, entityId,
-      parentEmailId, threadId, isReply, parentMessageId
+      parentEmailId, threadId, isReply, parentMessageId, parentConversationId
     }: EmailRequest = await req.json();
 
     if (!to || !subject || !from) {
@@ -320,17 +508,23 @@ const handler = async (req: Request): Promise<Response> => {
     // If it's a new email, thread_id will be set to the new email's own ID after creation
     let resolvedThreadId = threadId || parentEmailId || null;
 
-    // If parentEmailId is provided, fetch the parent's message_id for email headers
+    // If parentEmailId is provided, fetch the parent's message_id and conversation_id for threading
     let resolvedParentMessageId = parentMessageId;
-    if (parentEmailId && !resolvedParentMessageId) {
+    let resolvedParentConversationId: string | null = parentConversationId || null;
+    if (parentEmailId && (!resolvedParentMessageId || !resolvedParentConversationId)) {
       const { data: parentEmail } = await supabase
         .from("email_history")
-        .select("message_id, thread_id")
+        .select("message_id, thread_id, conversation_id")
         .eq("id", parentEmailId)
         .single();
       
       if (parentEmail) {
-        resolvedParentMessageId = parentEmail.message_id;
+        if (!resolvedParentMessageId) {
+          resolvedParentMessageId = parentEmail.message_id;
+        }
+        if (!resolvedParentConversationId) {
+          resolvedParentConversationId = parentEmail.conversation_id || null;
+        }
         // Use parent's thread_id if available
         if (parentEmail.thread_id && !resolvedThreadId) {
           resolvedThreadId = parentEmail.thread_id;
@@ -404,11 +598,159 @@ const handler = async (req: Request): Promise<Response> => {
     // Get access token from Azure AD
     const accessToken = await getAccessToken();
 
-    // Send email via Microsoft Graph API with tracking pixel and click tracking
-    await sendEmail(accessToken, { to, subject, body, toName, from, attachments, isReply }, emailRecord.id, resolvedParentMessageId);
+    // Determine if we can use the reply endpoint
+    // We need the Graph message ID (not internet message ID) to use reply endpoint
+    let graphMessageId: string | null = null;
+    
+    if (isReply && (resolvedParentMessageId || resolvedParentConversationId)) {
+      // Try to find the original message by internet message ID first
+      console.log(`Looking for original message. MessageID: ${resolvedParentMessageId}, ConversationID: ${resolvedParentConversationId}`);
 
-    // Fetch the sent message to get its Message-ID for reply tracking
+      try {
+        // Strategy 1: Search by internetMessageId (most accurate)
+        if (resolvedParentMessageId) {
+          const safeInternetMessageId = resolvedParentMessageId.replace(/'/g, "''");
+          const qs = new URLSearchParams({
+            "$filter": `internetMessageId eq '${safeInternetMessageId}'`,
+            "$select": "id,internetMessageId,conversationId",
+          });
+          const searchUrl = `https://graph.microsoft.com/v1.0/users/${from}/messages?${qs.toString()}`;
+
+          const searchResponse = await fetch(searchUrl, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          
+          if (searchResponse.ok) {
+            const searchData = await searchResponse.json();
+            if (searchData.value && searchData.value.length > 0) {
+              graphMessageId = searchData.value[0].id;
+              console.log(`Found Graph message ID via internetMessageId: ${graphMessageId}`);
+            }
+          } else {
+            console.warn(`Failed to search by internetMessageId: ${searchResponse.status}`);
+          }
+        }
+
+        // Strategy 2: If not found, search by conversationId (Outlook's threading key)
+        if (!graphMessageId && resolvedParentConversationId) {
+          console.log(`Trying to find message by conversationId: ${resolvedParentConversationId}`);
+          const convQs = new URLSearchParams({
+            "$filter": `conversationId eq '${resolvedParentConversationId}'`,
+            "$orderby": "receivedDateTime desc",
+            "$top": "1",
+            "$select": "id,internetMessageId,conversationId",
+          });
+          const convSearchUrl = `https://graph.microsoft.com/v1.0/users/${from}/messages?${convQs.toString()}`;
+
+          const convSearchResponse = await fetch(convSearchUrl, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          
+          if (convSearchResponse.ok) {
+            const convSearchData = await convSearchResponse.json();
+            if (convSearchData.value && convSearchData.value.length > 0) {
+              graphMessageId = convSearchData.value[0].id;
+              console.log(`Found Graph message ID via conversationId: ${graphMessageId}`);
+            } else {
+              console.log("No messages found by conversationId");
+            }
+          } else {
+            console.warn(`Failed to search by conversationId: ${convSearchResponse.status}`);
+          }
+        }
+
+        if (!graphMessageId) {
+          console.log("Original message not found in mailbox, will send as new email");
+        }
+      } catch (searchError) {
+        console.warn("Error searching for original message:", searchError);
+      }
+    }
+
+    // Send email - use reply endpoint if we have the Graph message ID, otherwise send as new
+    const effectiveSubject = isReply
+      ? subject.toLowerCase().startsWith("re:")
+        ? subject
+        : `Re: ${subject}`
+      : subject;
+
+    if (isReply && graphMessageId) {
+      console.log("Using Graph /reply action for proper threading");
+      try {
+        await sendReplyEmail(
+          accessToken,
+          {
+            to,
+            subject: effectiveSubject,
+            body,
+            toName,
+            from,
+            attachments,
+            isReply,
+            parentMessageId: resolvedParentMessageId,
+          },
+          emailRecord.id,
+          graphMessageId
+        );
+      } catch (replyError: any) {
+        // Check if this is a permission error
+        const errorMsg = replyError.message || '';
+        const isAccessDenied = errorMsg.includes("403") || errorMsg.includes("AccessDenied") || errorMsg.includes("Forbidden");
+        
+        if (isAccessDenied) {
+          console.error("=".repeat(60));
+          console.error("⚠️ Graph Reply API returned AccessDenied (403)");
+          console.error("This typically means missing Mail.Send or Mail.ReadWrite permission.");
+          console.error("For replies WITHOUT attachments: only Mail.Send is needed.");
+          console.error("For replies WITH attachments: Mail.ReadWrite is also needed.");
+          console.error("=".repeat(60));
+          console.warn(
+            "Falling back to sendMail - reply will be sent but may NOT appear in same Outlook thread."
+          );
+
+          await sendNewEmail(
+            accessToken,
+            {
+              to,
+              subject: effectiveSubject,
+              body,
+              toName,
+              from,
+              attachments,
+              isReply,
+              parentMessageId: resolvedParentMessageId,
+            },
+            emailRecord.id
+          );
+        } else {
+          throw replyError;
+        }
+      }
+    } else {
+      if (isReply) {
+        console.log(
+          "Could not use Graph Reply API (missing Graph message id). Sending via sendMail."
+        );
+      }
+      await sendNewEmail(
+        accessToken,
+        {
+          to,
+          subject: effectiveSubject,
+          body,
+          toName,
+          from,
+          attachments,
+          isReply,
+          parentMessageId: resolvedParentMessageId,
+        },
+        emailRecord.id
+      );
+    }
+
+    // Fetch the sent message to get its Message-ID and conversationId for threading
     let messageId: string | null = null;
+    let conversationId: string | null = null;
     let retries = 0;
     const maxRetries = 4;
 
@@ -417,7 +759,8 @@ const handler = async (req: Request): Promise<Response> => {
       retries++;
       
       try {
-        const sentItemsUrl = `https://graph.microsoft.com/v1.0/users/${from}/mailFolders/SentItems/messages?$top=10&$orderby=sentDateTime desc&$select=internetMessageId,subject,sentDateTime,toRecipients`;
+        // Include conversationId in the select to capture it for threading
+        const sentItemsUrl = `https://graph.microsoft.com/v1.0/users/${from}/mailFolders/SentItems/messages?$top=10&$orderby=sentDateTime desc&$select=internetMessageId,subject,sentDateTime,toRecipients,conversationId`;
         
         const sentResponse = await fetch(sentItemsUrl, {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -437,7 +780,8 @@ const handler = async (req: Request): Promise<Response> => {
 
           if (recentMessages.length === 1) {
             messageId = recentMessages[0].internetMessageId;
-            console.log(`Single recent email - captured Message-ID on attempt ${retries}: ${messageId}`);
+            conversationId = recentMessages[0].conversationId || null;
+            console.log(`Single recent email - captured Message-ID on attempt ${retries}: ${messageId}, conversationId: ${conversationId}`);
             break;
           }
 
@@ -462,7 +806,8 @@ const handler = async (req: Request): Promise<Response> => {
               
               if (subjectSimilar || recentMessages.length <= 2) {
                 messageId = msg.internetMessageId;
-                console.log(`Matched by recipient + subject on attempt ${retries}: ${messageId}`);
+                conversationId = msg.conversationId || null;
+                console.log(`Matched by recipient + subject on attempt ${retries}: ${messageId}, conversationId: ${conversationId}`);
                 break;
               }
             }
@@ -472,7 +817,8 @@ const handler = async (req: Request): Promise<Response> => {
             for (const msg of recentMessages) {
               if (msg.subject === subject) {
                 messageId = msg.internetMessageId;
-                console.log(`Matched by exact subject on attempt ${retries}: ${messageId}`);
+                conversationId = msg.conversationId || null;
+                console.log(`Matched by exact subject on attempt ${retries}: ${messageId}, conversationId: ${conversationId}`);
                 break;
               }
             }
@@ -488,16 +834,17 @@ const handler = async (req: Request): Promise<Response> => {
     if (!messageId) {
       console.warn(`Could not capture Message-ID for email to ${cleanedTo} after ${maxRetries} attempts`);
     } else {
-      console.log(`Successfully captured Message-ID: ${messageId}`);
+      console.log(`Successfully captured Message-ID: ${messageId}${conversationId ? `, conversationId: ${conversationId}` : ''}`);
     }
 
-    // Update email history with Message-ID
+    // Update email history with Message-ID and conversationId
     await supabase
       .from("email_history")
       .update({ 
         status: "sent",
         is_valid_open: true,
         message_id: messageId,
+        conversation_id: conversationId,
       })
       .eq("id", emailRecord.id);
 

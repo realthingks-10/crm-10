@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useSecurityAudit } from '@/hooks/useSecurityAudit';
 import { usePermissions } from '@/contexts/PermissionsContext';
-import { supabase } from '@/integrations/supabase/client';
 
 interface SecurityContextType {
   isSecurityEnabled: boolean;
@@ -24,34 +24,15 @@ interface SecurityProviderProps {
 }
 
 export const SecurityProvider = ({ children }: SecurityProviderProps) => {
-  const { user, loading: authLoading } = useAuth();
-  const { userRole, isAdmin, loading: permissionsLoading } = usePermissions();
+  const { user } = useAuth();
+  const { logSecurityEvent } = useSecurityAudit();
+  const { userRole, isAdmin } = usePermissions();
   
   // Refs to prevent duplicate session logging
   const sessionLoggedRef = useRef<string | null>(null);
   const visibilityHandlerRef = useRef<(() => void) | null>(null);
 
   const hasAdminAccess = isAdmin;
-
-  // Inline security event logging to avoid circular dependency
-  const logSecurityEvent = useCallback((
-    action: string,
-    resourceType: string,
-    resourceId?: string,
-    details?: Record<string, unknown>
-  ) => {
-    if (!user) return;
-    
-    // Fire and forget - don't block rendering
-    supabase.rpc('log_security_event', {
-      p_action: action,
-      p_resource_type: resourceType,
-      p_resource_id: resourceId,
-      p_details: details as unknown as Record<string, never>
-    }).then(({ error }) => {
-      if (error) console.error('Failed to log security event:', error);
-    });
-  }, [user]);
 
   // Debounced visibility change handler
   const handleVisibilityChange = useCallback(() => {
@@ -64,9 +45,6 @@ export const SecurityProvider = ({ children }: SecurityProviderProps) => {
   }, [user, logSecurityEvent]);
 
   useEffect(() => {
-    // Don't do anything while still loading auth
-    if (authLoading || permissionsLoading) return;
-    
     if (!user || !userRole) {
       // Clean up if user logs out
       if (visibilityHandlerRef.current) {
@@ -101,7 +79,7 @@ export const SecurityProvider = ({ children }: SecurityProviderProps) => {
         visibilityHandlerRef.current = null;
       }
     };
-  }, [user, userRole, authLoading, permissionsLoading, logSecurityEvent, handleVisibilityChange]);
+  }, [user, userRole, logSecurityEvent, handleVisibilityChange]);
 
   const value = {
     isSecurityEnabled: true,

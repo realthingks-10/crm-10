@@ -48,6 +48,7 @@ interface EmailHistoryItem {
   parent_email_id?: string | null;
   is_reply?: boolean;
   message_id?: string | null;
+  conversation_id?: string | null;
 }
 
 interface EmailReply {
@@ -128,7 +129,7 @@ export const EntityEmailHistory = ({ entityType, entityId }: EntityEmailHistoryP
     try {
       let query = supabase
         .from('email_history')
-        .select('id, subject, recipient_email, recipient_name, sender_email, body, status, sent_at, opened_at, open_count, unique_opens, bounce_type, bounce_reason, bounced_at, is_valid_open, reply_count, replied_at, last_reply_at, lead_id, contact_id, account_id, thread_id, parent_email_id, is_reply, message_id')
+        .select('id, subject, recipient_email, recipient_name, sender_email, body, status, sent_at, opened_at, open_count, unique_opens, bounce_type, bounce_reason, bounced_at, is_valid_open, reply_count, replied_at, last_reply_at, lead_id, contact_id, account_id, thread_id, parent_email_id, is_reply, message_id, conversation_id')
         .order('sent_at', { ascending: false });
 
       if (entityType === 'contact') {
@@ -325,11 +326,37 @@ export const EntityEmailHistory = ({ entityType, entityId }: EntityEmailHistoryP
   };
 
   const handleReplyToThread = (thread: EmailThread) => {
-    // Get the last sent email in the thread for context
-    const lastSentMessage = [...thread.messages].reverse().find(m => m.type === 'sent');
-    if (lastSentMessage?.originalEmail) {
-      setSelectedEmailForReply(lastSentMessage.originalEmail);
-      setReplyToData(undefined);
+    // For proper Outlook threading, we need to reply using the MOST RECENT sent email
+    // that has a valid message_id/conversation_id. This ensures we continue the thread properly.
+    
+    // Sort by timestamp descending to get most recent first
+    const sortedMessages = [...thread.messages].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    // Find the most recent SENT email (that's what we need for the reply endpoint)
+    const mostRecentSent = sortedMessages.find(m => m.type === 'sent' && m.originalEmail);
+    
+    if (mostRecentSent?.originalEmail) {
+      // Use the most recent sent email for threading context
+      setSelectedEmailForReply(mostRecentSent.originalEmail);
+      
+      // If there's a received reply that's more recent than this sent email,
+      // include its context so the user knows what they're replying to
+      const mostRecentReceived = sortedMessages.find(m => m.type === 'received');
+      if (mostRecentReceived && 
+          new Date(mostRecentReceived.timestamp) > new Date(mostRecentSent.timestamp) &&
+          mostRecentReceived.originalReply) {
+        setReplyToData({
+          from_email: mostRecentReceived.from_email,
+          from_name: mostRecentReceived.from_name,
+          body_preview: mostRecentReceived.body,
+          received_at: mostRecentReceived.timestamp,
+          subject: mostRecentReceived.subject,
+        });
+      } else {
+        setReplyToData(undefined);
+      }
       setShowReplyModal(true);
     }
   };
@@ -539,6 +566,7 @@ export const EntityEmailHistory = ({ entityType, entityId }: EntityEmailHistoryP
             account_id: selectedEmailForReply.account_id,
             thread_id: selectedEmailForReply.thread_id,
             message_id: selectedEmailForReply.message_id,
+            conversation_id: selectedEmailForReply.conversation_id,
           }}
           replyTo={replyToData}
           onReplySent={() => {
