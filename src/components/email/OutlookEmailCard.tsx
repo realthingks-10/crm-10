@@ -172,7 +172,7 @@ export const OutlookEmailCard = ({
       return (
         <Badge className={cn(EMAIL_STATUS_COLORS.opened.bg, EMAIL_STATUS_COLORS.opened.text, 'flex items-center gap-1')}>
           <Eye className="w-3 h-3" />
-          Opened {openCount && openCount > 1 ? `(${openCount})` : ''}
+          Opened
         </Badge>
       );
     }

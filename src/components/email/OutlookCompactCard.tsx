@@ -139,7 +139,7 @@ export const OutlookCompactCard = memo(({
       return (
         <Badge variant="outline" className={cn("h-5 px-1.5 text-[10px]", EMAIL_STATUS_COLORS.opened.bg, EMAIL_STATUS_COLORS.opened.text)}>
           <Eye className="w-2.5 h-2.5 mr-0.5" />
-          {openCount && openCount > 1 ? `${openCount}×` : 'Opened'}
+          Opened
         </Badge>
       );
     }
