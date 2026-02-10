@@ -1,22 +1,16 @@
 import { useState, lazy, Suspense, useEffect } from 'react';
-import { Users, Lock, Database, Activity, History, Zap, Clock } from 'lucide-react';
+import { Users, Lock, History, Activity, BarChart3 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Loader2, ShieldAlert, BarChart3, FileText, Megaphone } from 'lucide-react';
+import { Loader2, ShieldAlert } from 'lucide-react';
 import SettingsCard from './shared/SettingsCard';
 import SettingsLoadingSkeleton from './shared/SettingsLoadingSkeleton';
 
 // Lazy load admin section components
 const UserManagement = lazy(() => import('@/components/UserManagement'));
 const PageAccessSettings = lazy(() => import('@/components/settings/PageAccessSettings'));
-const BackupRestoreSettings = lazy(() => import('@/components/settings/BackupRestoreSettings'));
 const AuditLogsSettings = lazy(() => import('@/components/settings/AuditLogsSettings'));
-const SystemStatusSettings = lazy(() => import('@/components/settings/SystemStatusSettings'));
-const ScheduledReportsSettings = lazy(() => import('@/components/settings/ScheduledReportsSettings'));
-const AnnouncementSettings = lazy(() => import('@/components/settings/AnnouncementSettings'));
-const EdgeFunctionMonitor = lazy(() => import('@/components/settings/EdgeFunctionMonitor'));
-const CronJobMonitoring = lazy(() => import('@/components/settings/CronJobMonitoring'));
 
 const adminTabs = [
   { id: 'users', label: 'Users', icon: Users },
@@ -41,10 +35,6 @@ const AdminSettingsPage = ({ defaultSection }: AdminSettingsPageProps) => {
       'audit-logs': 'logs',
       'backup': 'system',
       'system-status': 'system',
-      'edge-functions': 'system',
-      'cron-jobs': 'system',
-      'scheduled-reports': 'reports',
-      'announcements': 'reports'
     };
     return sectionToTab[section] || 'users';
   };
@@ -123,45 +113,26 @@ const AdminSettingsPage = ({ defaultSection }: AdminSettingsPageProps) => {
           </Suspense>
         </TabsContent>
 
-        {/* System tab - Reordered: System Status, Backup, Cron Jobs, Edge Functions */}
         <TabsContent value="system" className="mt-6 space-y-4">
-          <SettingsCard icon={Activity} title="System Status" description="Monitor system health, database stats, and storage usage">
-            <Suspense fallback={<SettingsLoadingSkeleton />}>
-              <SystemStatusSettings embedded />
-            </Suspense>
-          </SettingsCard>
-
-          <SettingsCard icon={Database} title="Data Backup & Restore" description="Export data and manage backups">
-            <Suspense fallback={<SettingsLoadingSkeleton />}>
-              <BackupRestoreSettings />
-            </Suspense>
-          </SettingsCard>
-
-          <SettingsCard icon={Clock} title="Cron Jobs & Keep-Alive" description="Scheduled job status and database connectivity">
-            <Suspense fallback={<SettingsLoadingSkeleton />}>
-              <CronJobMonitoring embedded />
-            </Suspense>
-          </SettingsCard>
-
-          <SettingsCard icon={Zap} title="Edge Functions" description="Monitor and test all backend edge functions">
-            <Suspense fallback={<SettingsLoadingSkeleton />}>
-              <EdgeFunctionMonitor embedded />
-            </Suspense>
-          </SettingsCard>
+          <Card>
+            <CardContent className="py-8">
+              <div className="text-center text-muted-foreground">
+                <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>System monitoring coming soon</p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="reports" className="mt-6 space-y-6">
-          <SettingsCard icon={FileText} title="Scheduled Reports" description="Configure automated email reports">
-            <Suspense fallback={<SettingsLoadingSkeleton />}>
-              <ScheduledReportsSettings />
-            </Suspense>
-          </SettingsCard>
-
-          <SettingsCard icon={Megaphone} title="Announcement Management" description="Create and manage system announcements">
-            <Suspense fallback={<SettingsLoadingSkeleton />}>
-              <AnnouncementSettings />
-            </Suspense>
-          </SettingsCard>
+          <Card>
+            <CardContent className="py-8">
+              <div className="text-center text-muted-foreground">
+                <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Scheduled reports coming soon</p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

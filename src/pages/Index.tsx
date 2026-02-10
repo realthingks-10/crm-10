@@ -4,12 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Deal, DealStage } from "@/types/deal";
 import { DealForm } from "@/components/DealForm";
+import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardStats } from "@/components/dashboard/DashboardStats";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { LayoutGrid, List, Plus, LogOut } from "lucide-react";
 
 const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -251,27 +249,12 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Inline header to replace DashboardHeader */}
-      <header className="border-b bg-card sticky top-0 z-50">
-        <div className="container mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-lg font-semibold">Deals Pipeline</h1>
-            <ToggleGroup type="single" value={activeView} onValueChange={(v) => v && setActiveView(v as 'kanban' | 'list')}>
-              <ToggleGroupItem value="kanban" aria-label="Kanban View" className="h-8 px-3">
-                <LayoutGrid className="w-4 h-4" />
-              </ToggleGroupItem>
-              <ToggleGroupItem value="list" aria-label="List View" className="h-8 px-3">
-                <List className="w-4 h-4" />
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button onClick={() => handleCreateDeal('Lead')} size="sm" className="gap-2">
-              <Plus className="w-4 h-4" /> New Deal
-            </Button>
-          </div>
-        </div>
-      </header>
+      <DashboardHeader
+        activeView={activeView}
+        onViewChange={setActiveView}
+        onCreateDeal={() => handleCreateDeal('Lead')}
+        onSignOut={handleSignOut}
+      />
 
       <DashboardStats deals={deals} />
 

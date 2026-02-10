@@ -12,20 +12,6 @@ interface PagePermission {
   user_access: boolean;
 }
 
-interface AccessSnapshot {
-  role: string;
-  permissions: PagePermission[];
-  profile: {
-    id?: string;
-    full_name?: string;
-    email?: string;
-    avatar_url?: string;
-    phone?: string;
-    timezone?: string;
-  };
-  computed_at: string;
-}
-
 interface PermissionsContextType {
   userRole: string;
   isAdmin: boolean;
@@ -34,7 +20,6 @@ interface PermissionsContextType {
   loading: boolean;
   hasPageAccess: (route: string) => boolean;
   refreshPermissions: () => Promise<void>;
-  userProfile: AccessSnapshot['profile'] | null;
 }
 
 const PermissionsContext = createContext<PermissionsContextType | undefined>(undefined);
@@ -55,57 +40,58 @@ export const PermissionsProvider = ({ children }: PermissionsProviderProps) => {
   const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
 
-  // Use React Query with the new RPC for access snapshot
-  // 24 hour staleTime - the RPC handles version checking internally
-  const { data: snapshot, isLoading: snapshotLoading } = useQuery({
-    queryKey: ['access-snapshot', user?.id],
+  // Fetch user role from user_roles table
+  const { data: roleData, isLoading: roleLoading } = useQuery({
+    queryKey: ['user-role', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_my_access_snapshot');
+      if (!user?.id) return { role: 'user' };
+      
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
       
       if (error) {
-        console.error('Error fetching access snapshot:', error);
-        // Fallback to default permissions
-        return {
-          role: 'user',
-          permissions: [],
-          profile: {},
-          computed_at: new Date().toISOString()
-        } as AccessSnapshot;
+        console.error('Error fetching user role:', error);
+        return { role: 'user' };
       }
-
-      // RPC returns an array with one row
-      const result = data?.[0];
-      if (!result) {
-        return {
-          role: 'user',
-          permissions: [],
-          profile: {},
-          computed_at: new Date().toISOString()
-        } as AccessSnapshot;
-      }
-
-      return {
-        role: result.role || 'user',
-        permissions: Array.isArray(result.permissions) ? (result.permissions as unknown as PagePermission[]) : [],
-        profile: (result.profile || {}) as AccessSnapshot['profile'],
-        computed_at: result.computed_at
-      } as AccessSnapshot;
+      
+      return { role: data?.role || 'user' };
     },
     enabled: !!user,
-    staleTime: 24 * 60 * 60 * 1000, // 24 hours - RPC handles version invalidation
-    gcTime: 24 * 60 * 60 * 1000, // Keep in cache for 24 hours
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    retry: 1,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,
   });
 
-  const userRole = snapshot?.role || 'user';
-  const permissions = snapshot?.permissions || [];
-  const userProfile = snapshot?.profile || null;
+  // Fetch page permissions
+  const { data: permissionsData, isLoading: permissionsLoading } = useQuery({
+    queryKey: ['page-permissions'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('page_permissions')
+        .select('*');
+      
+      if (error) {
+        console.error('Error fetching page permissions:', error);
+        return [];
+      }
+      
+      return data as PagePermission[];
+    },
+    enabled: !!user,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000,
+  });
+
+  const userRole = roleData?.role || 'user';
+  const permissions = permissionsData || [];
 
   const refreshPermissions = useCallback(async () => {
-    // Invalidate the access snapshot query to force refetch
-    await queryClient.invalidateQueries({ queryKey: ['access-snapshot', user?.id] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['user-role', user?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['page-permissions'] }),
+    ]);
   }, [queryClient, user?.id]);
 
   const hasPageAccess = useCallback((route: string): boolean => {
@@ -136,7 +122,7 @@ export const PermissionsProvider = ({ children }: PermissionsProviderProps) => {
   const isManager = userRole === 'manager';
 
   // Only show loading on initial load when there's no cached data
-  const loading = authLoading || (snapshotLoading && !snapshot);
+  const loading = authLoading || ((roleLoading || permissionsLoading) && !roleData);
 
   const value = useMemo(() => ({
     userRole,
@@ -146,8 +132,7 @@ export const PermissionsProvider = ({ children }: PermissionsProviderProps) => {
     loading,
     hasPageAccess,
     refreshPermissions,
-    userProfile
-  }), [userRole, isAdmin, isManager, permissions, loading, hasPageAccess, refreshPermissions, userProfile]);
+  }), [userRole, isAdmin, isManager, permissions, loading, hasPageAccess, refreshPermissions]);
 
   return (
     <PermissionsContext.Provider value={value}>

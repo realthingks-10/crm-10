@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { User, Shield, Mail } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUserRole } from "@/hooks/useUserRole";
-import { usePermissions } from "@/contexts/PermissionsContext";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Lazy load heavy settings pages
@@ -56,13 +55,7 @@ const Settings = () => {
     return searchParams.get('tab') || 'account';
   });
   const { userRole } = useUserRole();
-  const { refreshPermissions } = usePermissions();
   const isAdmin = userRole === "admin";
-
-  // Refresh permissions on mount to ensure latest role data
-  useEffect(() => {
-    refreshPermissions();
-  }, [refreshPermissions]);
 
   const visibleTabs = tabs.filter(tab => !tab.adminOnly || isAdmin);
 

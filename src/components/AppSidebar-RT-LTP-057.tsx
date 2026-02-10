@@ -82,7 +82,7 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
 
   const getThemeTooltipText = () => {
     if (theme === 'light') return 'Switch to Dark theme';
-    if (theme === 'dark') return 'Switch to System theme';
+    if (theme === 'dark') return 'Switch to Auto theme';
     return 'Switch to Light theme';
   };
 

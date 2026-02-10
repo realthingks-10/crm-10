@@ -1,17 +1,18 @@
 
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Deal, DealStage, getNextStage, getFinalStageOptions, getStageIndex, DEAL_STAGES } from "@/types/deal";
 import { useToast } from "@/hooks/use-toast";
 import { validateRequiredFields, getFieldErrors, validateDateLogic, validateRevenueSum } from "./deal-form/validation";
 import { DealStageForm } from "./deal-form/DealStageForm";
+import { DealActionItemsModal } from "./DealActionItemsModal";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
-import { Plus, ListTodo } from "lucide-react";
 
 interface DealFormProps {
   deal: Deal | null;
@@ -21,16 +22,17 @@ interface DealFormProps {
   onRefresh?: () => Promise<void>;
   isCreating?: boolean;
   initialStage?: DealStage;
+   onDelete?: (dealId: string) => void;
 }
 
-export const DealForm = ({ deal, isOpen, onClose, onSave, isCreating = false, initialStage, onRefresh }: DealFormProps) => {
-  const navigate = useNavigate();
+ export const DealForm = ({ deal, isOpen, onClose, onSave, isCreating = false, initialStage, onRefresh, onDelete }: DealFormProps) => {
+   const [deleteLoading, setDeleteLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<Deal>>({});
   const [loading, setLoading] = useState(false);
   const [showPreviousStages, setShowPreviousStages] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [showValidationErrors, setShowValidationErrors] = useState(false);
-  const [linkedTasksCount, setLinkedTasksCount] = useState(0);
+  const [actionModalOpen, setActionModalOpen] = useState(false);
   const { toast } = useToast();
 
   // NEW: Track current user id for default Lead Owner
@@ -98,32 +100,6 @@ export const DealForm = ({ deal, isOpen, onClose, onSave, isCreating = false, in
     }
     setShowPreviousStages(false);
   }, [deal, isCreating, initialStage, isOpen]);
-
-  // Fetch linked tasks count for this deal
-  useEffect(() => {
-    const fetchLinkedTasksCount = async () => {
-      if (!deal?.id || isCreating) {
-        setLinkedTasksCount(0);
-        return;
-      }
-      
-      const { count, error } = await supabase
-        .from('tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('deal_id', deal.id);
-      
-      if (error) {
-        console.error('Error fetching linked tasks count:', error);
-        return;
-      }
-      
-      setLinkedTasksCount(count || 0);
-    };
-    
-    if (isOpen && deal?.id) {
-      fetchLinkedTasksCount();
-    }
-  }, [deal?.id, isOpen, isCreating]);
 
   const currentStage = formData.stage || 'Lead';
 
@@ -325,45 +301,34 @@ export const DealForm = ({ deal, isOpen, onClose, onSave, isCreating = false, in
   const canSave = true; // Always allow saving
 
   const handleActionButtonClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!deal) return;
-    
-    onClose();
-    
-    if (linkedTasksCount > 0) {
-      // View existing tasks linked to this deal
-      const params = new URLSearchParams({
-        deal_id: deal.id,
-      });
-      navigate(`/tasks?${params.toString()}`);
-    } else {
-      // Create new task linked to this deal
-      const params = new URLSearchParams({
-        create: '1',
-        module: 'deals',
-        recordId: deal.id,
-        recordName: deal.project_name || deal.deal_name || 'Deal',
-        return: '/deals',
-        returnViewId: deal.id,
-      });
-      navigate(`/tasks?${params.toString()}`);
-    }
+    e.preventDefault(); // Prevent form submission
+    e.stopPropagation(); // Stop event bubbling
+    setActionModalOpen(true);
   };
 
-  // Helper to get currency symbol
-  const getCurrencySymbol = (currency?: string) => {
-    switch (currency) {
-      case 'USD': return '$';
-      case 'INR': return '₹';
-      default: return '€';
-    }
-  };
-
+   const handleDelete = async () => {
+     if (!deal?.id || !onDelete) return;
+     
+     setDeleteLoading(true);
+     try {
+       onDelete(deal.id);
+       onClose();
+     } catch (error) {
+       console.error("Error deleting deal:", error);
+       toast({
+         title: "Error",
+         description: "Failed to delete deal",
+         variant: "destructive",
+       });
+     } finally {
+       setDeleteLoading(false);
+     }
+   };
+ 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose} modal={true}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-        <DialogHeader className="flex-shrink-0">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
           <div className="flex items-center justify-between">
             <div>
               <DialogTitle className="text-2xl font-bold">
@@ -391,51 +356,18 @@ export const DealForm = ({ deal, isOpen, onClose, onSave, isCreating = false, in
           </div>
         </DialogHeader>
 
-        {/* Deal Summary Section - Only show for existing deals - Fixed */}
-        {!isCreating && formData && (
-          <div className="flex-shrink-0 grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg mb-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Customer</p>
-              <p className="font-medium truncate">{formData.customer_name || '-'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Contract Value</p>
-              <p className="font-medium text-primary">
-                {formData.total_contract_value 
-                  ? `${getCurrencySymbol(formData.currency_type)}${formData.total_contract_value.toLocaleString()}`
-                  : '-'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Probability</p>
-              <p className="font-medium">{formData.probability ? `${formData.probability}%` : '-'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Expected Close</p>
-              <p className="font-medium">
-                {formData.expected_closing_date 
-                  ? new Date(formData.expected_closing_date).toLocaleDateString()
-                  : '-'}
-              </p>
-            </div>
-          </div>
-        )}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <DealStageForm
+            formData={formData}
+            onFieldChange={handleFieldChange}
+            onLeadSelect={handleLeadSelect}
+            fieldErrors={fieldErrors}
+            stage={currentStage}
+            showPreviousStages={showPreviousStages}
+          />
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-          {/* Scrollable stages section */}
-          <div className="flex-1 overflow-y-auto pr-2">
-            <DealStageForm
-              formData={formData}
-              onFieldChange={handleFieldChange}
-              onLeadSelect={handleLeadSelect}
-              fieldErrors={fieldErrors}
-              stage={currentStage}
-              showPreviousStages={showPreviousStages}
-            />
-          </div>
-
-          {/* Action Buttons - Fixed at bottom */}
-          <div className="flex-shrink-0 flex justify-between items-center pt-4 border-t mt-4">
+          {/* Action Buttons */}
+          <div className="flex justify-between items-center">
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
@@ -443,20 +375,49 @@ export const DealForm = ({ deal, isOpen, onClose, onSave, isCreating = false, in
               <Button type="submit" disabled={loading} className="btn-primary">
                 {loading ? "Saving..." : "Save"}
               </Button>
+               {/* Delete button - only for existing deals */}
+               {!isCreating && deal && onDelete && (
+                 <AlertDialog>
+                   <AlertDialogTrigger asChild>
+                     <Button 
+                       type="button" 
+                       variant="destructive" 
+                       disabled={deleteLoading}
+                     >
+                       <Trash2 className="w-4 h-4 mr-2" />
+                       {deleteLoading ? "Deleting..." : "Delete"}
+                     </Button>
+                   </AlertDialogTrigger>
+                   <AlertDialogContent>
+                     <AlertDialogHeader>
+                       <AlertDialogTitle>Delete Deal</AlertDialogTitle>
+                       <AlertDialogDescription>
+                         Are you sure you want to delete "{deal.project_name || deal.deal_name}"? This action cannot be undone.
+                       </AlertDialogDescription>
+                     </AlertDialogHeader>
+                     <AlertDialogFooter>
+                       <AlertDialogCancel>Cancel</AlertDialogCancel>
+                       <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                         Delete
+                       </AlertDialogAction>
+                     </AlertDialogFooter>
+                   </AlertDialogContent>
+                 </AlertDialog>
+               )}
             </div>
 
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2">
               {/* Move to Stage Dropdown - Allow movement to any stage */}
               {!isCreating && getAvailableStagesForMoveTo().length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Move to:</span>
+                  <span className="text-sm text-gray-600">Move to:</span>
                   <Select
                     value=""
                     onValueChange={(value) => {
                       handleMoveToSpecificStage(value as DealStage);
                     }}
                   >
-                    <SelectTrigger className="w-[140px]">
+                    <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Select stage..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -472,26 +433,24 @@ export const DealForm = ({ deal, isOpen, onClose, onSave, isCreating = false, in
               {!isCreating && (
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant="outline"
+                  size="sm"
                   onClick={handleActionButtonClick}
                 >
-                  {linkedTasksCount > 0 ? (
-                    <>
-                      <ListTodo className="h-4 w-4 mr-2" />
-                      View Tasks ({linkedTasksCount})
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create Task
-                    </>
-                  )}
+                  Action
                 </Button>
               )}
             </div>
           </div>
         </form>
       </DialogContent>
+      
+      {/* Action Items Modal */}
+      <DealActionItemsModal
+        open={actionModalOpen}
+        onOpenChange={setActionModalOpen}
+        deal={deal}
+      />
     </Dialog>
   );
 };

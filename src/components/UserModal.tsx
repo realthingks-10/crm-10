@@ -87,12 +87,12 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Add New User</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1.5">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
@@ -104,7 +104,7 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
             />
           </div>
           
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="displayName">Display Name</Label>
             <Input
               id="displayName"
@@ -115,7 +115,7 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
@@ -128,7 +128,7 @@ const UserModal = ({ open, onClose, onSuccess }: UserModalProps) => {
             />
           </div>
           
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="role">Role</Label>
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger>

@@ -1,70 +1,81 @@
-import { useCallback } from 'react';
+
+import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+
+interface SecurityEvent {
+  id: string;
+  user_id: string;
+  action: string;
+  resource_type: string;
+  resource_id?: string;
+  details?: any;
+  ip_address?: string;
+  created_at: string;
+}
 
 export const useSecurityAudit = () => {
-  const { user } = useAuth();
+  const { toast } = useToast();
 
-  const logSecurityEvent = useCallback(async (
+  const logSecurityEvent = async (
     action: string,
     resourceType: string,
     resourceId?: string,
     details?: any
   ) => {
     try {
-      // Use cached user from useAuth - no network call needed
+      // First check if user is authenticated
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.log('No authenticated user, skipping security event logging');
         return;
       }
 
-      // Fire and forget - don't await
-      supabase.rpc('log_security_event', {
+      const { error } = await supabase.rpc('log_security_event', {
         p_action: action,
         p_resource_type: resourceType,
         p_resource_id: resourceId,
         p_details: details
-      }).then(({ error }) => {
-        if (error) {
-          console.error('Failed to log security event:', error);
-        }
       });
+
+      if (error) {
+        console.error('Failed to log security event:', error);
+      } else {
+        console.log('Security event logged successfully:', { action, resourceType, resourceId });
+      }
     } catch (error) {
       console.error('Security audit logging error:', error);
     }
-  }, [user]);
+  };
 
-  const logDataAccess = useCallback(async (
+  const logDataAccess = async (
     tableName: string,
     operation: string,
     recordId?: string
   ) => {
     try {
-      // Use cached user from useAuth - no network call needed
+      // First check if user is authenticated
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.log('No authenticated user, skipping data access logging');
         return;
       }
 
-      // Only log mutations, not reads - reduces log volume significantly
-      if (operation === 'SELECT') {
-        return;
-      }
-
-      // Fire and forget - don't await
-      supabase.rpc('log_data_access', {
+      const { error } = await supabase.rpc('log_data_access', {
         p_table_name: tableName,
         p_operation: operation,
         p_record_id: recordId
-      }).then(({ error }) => {
-        if (error) {
-          console.error('Failed to log data access:', error);
-        }
       });
+
+      if (error) {
+        console.error('Failed to log data access:', error);
+      } else {
+        console.log('Data access logged successfully:', { tableName, operation, recordId });
+      }
     } catch (error) {
       console.error('Data access logging error:', error);
     }
-  }, [user]);
+  };
 
   return {
     logSecurityEvent,

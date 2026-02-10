@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSecureDataAccess } from '@/hooks/useSecureDataAccess';
 import { useToast } from '@/hooks/use-toast';
 import { useCRUDAudit } from '@/hooks/useCRUDAudit';
+import { fetchAllRecords } from '@/utils/supabasePagination';
 
 interface Lead {
   id: string;
@@ -35,18 +36,13 @@ export const useSecureLeads = () => {
   const fetchLeads = async () => {
     try {
       setLoading(true);
-      const query = supabase
-        .from('leads')
-        .select('*')
-        .order('created_time', { ascending: false });
-
-      const result = await secureQuery('leads', query, 'SELECT');
-      setLeads(result.data || []);
+      const allLeads = await fetchAllRecords<Lead>('leads', 'created_time', false);
+      setLeads(allLeads);
     } catch (error: any) {
       console.error('Error fetching leads:', error);
       toast({
-        title: "Access Denied",
-        description: "You don't have permission to view these leads",
+        title: "Error",
+        description: "Failed to fetch leads",
         variant: "destructive",
       });
     } finally {

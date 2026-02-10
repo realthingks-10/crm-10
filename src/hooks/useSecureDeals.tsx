@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSecureDataAccess } from '@/hooks/useSecureDataAccess';
 import { useToast } from '@/hooks/use-toast';
 import { useCRUDAudit } from '@/hooks/useCRUDAudit';
+import { fetchAllRecords } from '@/utils/supabasePagination';
 
 interface Deal {
   id: string;
@@ -33,18 +34,13 @@ export const useSecureDeals = () => {
   const fetchDeals = async () => {
     try {
       setLoading(true);
-      const query = supabase
-        .from('deals')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      const result = await secureQuery('deals', query, 'SELECT');
-      setDeals(result.data || []);
+      const allDeals = await fetchAllRecords<Deal>('deals', 'created_at', false);
+      setDeals(allDeals);
     } catch (error: any) {
       console.error('Error fetching deals:', error);
       toast({
-        title: "Access Denied",
-        description: "You don't have permission to view these deals",
+        title: "Error",
+        description: "Failed to fetch deals",
         variant: "destructive",
       });
     } finally {

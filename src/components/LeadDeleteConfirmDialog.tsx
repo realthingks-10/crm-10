@@ -59,7 +59,7 @@ export const LeadDeleteConfirmDialog = ({
               htmlFor="delete-linked"
               className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
-              Also delete all related records (notifications, tasks, etc.)
+              Also delete all related records (notifications, action items, etc.)
             </label>
           </div>
           <p className="text-xs text-muted-foreground mt-2">

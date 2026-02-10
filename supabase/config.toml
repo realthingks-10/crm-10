@@ -1,1 +1,4 @@
 project_id = "nreslricievaamrwfrlx"
+
+[functions.link-contacts-accounts]
+verify_jwt = false

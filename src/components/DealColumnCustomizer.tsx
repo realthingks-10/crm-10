@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
 
 export interface DealColumnConfig {
   field: string;
@@ -17,62 +17,15 @@ interface DealColumnCustomizerProps {
   onOpenChange: (open: boolean) => void;
   columns: DealColumnConfig[];
   onColumnsChange: (columns: DealColumnConfig[]) => void;
-  onSave?: (columns: DealColumnConfig[]) => Promise<unknown>;
-  isSaving?: boolean;
 }
-
-// Removed region column - available from linked Account/Customer
-export const defaultDealColumns: DealColumnConfig[] = [
-  { field: 'project_name', label: 'Project', visible: true, order: 0 },
-  { field: 'customer_name', label: 'Customer', visible: true, order: 1 },
-  { field: 'lead_name', label: 'Lead Name', visible: true, order: 2 },
-  { field: 'stage', label: 'Stage', visible: true, order: 3 },
-  { field: 'priority', label: 'Priority', visible: true, order: 4 },
-  { field: 'total_contract_value', label: 'Value', visible: true, order: 5 },
-  { field: 'probability', label: 'Probability', visible: true, order: 6 },
-  { field: 'expected_closing_date', label: 'Expected Close', visible: true, order: 7 },
-  { field: 'project_duration', label: 'Duration', visible: false, order: 8 },
-  { field: 'start_date', label: 'Start Date', visible: false, order: 9 },
-  { field: 'end_date', label: 'End Date', visible: false, order: 10 },
-  { field: 'proposal_due_date', label: 'Proposal Due', visible: false, order: 11 },
-  { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 12 },
-  { field: 'lead_owner', label: 'Lead Owner', visible: true, order: 13 },
-];
 
 export const DealColumnCustomizer = ({ 
   open, 
   onOpenChange, 
   columns, 
-  onColumnsChange,
-  onSave,
-  isSaving = false,
+  onColumnsChange 
 }: DealColumnCustomizerProps) => {
-  // Initialize local columns only when dialog opens
-  const [localColumns, setLocalColumns] = useState<DealColumnConfig[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  // Sync local columns only when dialog opens (not on every columns prop change)
-  useEffect(() => {
-    if (open && !isInitialized) {
-      const existingFields = new Set(columns.map(c => c.field));
-      const missingColumns = defaultDealColumns.filter(dc => !existingFields.has(dc.field));
-      const validColumns = columns.filter(c => 
-        defaultDealColumns.some(dc => dc.field === c.field)
-      );
-      
-      if (missingColumns.length > 0 || validColumns.length !== columns.length) {
-        setLocalColumns([...validColumns, ...missingColumns]);
-      } else {
-        setLocalColumns(columns);
-      }
-      setIsInitialized(true);
-    }
-    
-    // Reset initialization flag when dialog closes
-    if (!open) {
-      setIsInitialized(false);
-    }
-  }, [open, columns, isInitialized]);
+  const [localColumns, setLocalColumns] = useState<DealColumnConfig[]>(columns);
 
   const handleVisibilityChange = (field: string, visible: boolean) => {
     const updatedColumns = localColumns.map(col => 
@@ -81,16 +34,30 @@ export const DealColumnCustomizer = ({
     setLocalColumns(updatedColumns);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     onColumnsChange(localColumns);
-    if (onSave) {
-      await onSave(localColumns);
-    }
     onOpenChange(false);
   };
 
   const handleReset = () => {
-    setLocalColumns(defaultDealColumns);
+    const defaultColumns: DealColumnConfig[] = [
+      { field: 'project_name', label: 'Project', visible: true, order: 0 },
+      { field: 'customer_name', label: 'Customer', visible: true, order: 1 },
+      { field: 'lead_name', label: 'Lead Name', visible: true, order: 2 },
+      { field: 'lead_owner', label: 'Lead Owner', visible: true, order: 3 },
+      { field: 'stage', label: 'Stage', visible: true, order: 4 },
+      { field: 'priority', label: 'Priority', visible: true, order: 5 },
+      { field: 'total_contract_value', label: 'Value', visible: true, order: 6 },
+      { field: 'probability', label: 'Probability', visible: true, order: 7 },
+      { field: 'expected_closing_date', label: 'Expected Close', visible: true, order: 8 },
+      { field: 'region', label: 'Region', visible: false, order: 9 },
+      { field: 'project_duration', label: 'Duration', visible: false, order: 10 },
+      { field: 'start_date', label: 'Start Date', visible: false, order: 11 },
+      { field: 'end_date', label: 'End Date', visible: false, order: 12 },
+      { field: 'proposal_due_date', label: 'Proposal Due', visible: false, order: 13 },
+      { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 14 },
+    ];
+    setLocalColumns(defaultColumns);
   };
 
   return (
@@ -133,15 +100,8 @@ export const DealColumnCustomizer = ({
             <Button variant="outline" onClick={handleReset}>
               Reset to Default
             </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                'Save'
-              )}
+            <Button onClick={handleSave}>
+              Apply Changes
             </Button>
           </div>
         </div>

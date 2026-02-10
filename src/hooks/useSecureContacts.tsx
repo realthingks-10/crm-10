@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSecureDataAccess } from '@/hooks/useSecureDataAccess';
 import { useToast } from '@/hooks/use-toast';
 import { useCRUDAudit } from '@/hooks/useCRUDAudit';
+import { fetchAllRecords } from '@/utils/supabasePagination';
 
 interface Contact {
   id: string;
@@ -43,18 +44,13 @@ export const useSecureContacts = () => {
   const fetchContacts = async () => {
     try {
       setLoading(true);
-      const query = supabase
-        .from('contacts')
-        .select('*')
-        .order('created_time', { ascending: false });
-
-      const result = await secureQuery('contacts', query, 'SELECT');
-      setContacts(result.data || []);
+      const allContacts = await fetchAllRecords<Contact>('contacts', 'created_time', false);
+      setContacts(allContacts);
     } catch (error: any) {
       console.error('Error fetching contacts:', error);
       toast({
-        title: "Access Denied",
-        description: "You don't have permission to view these contacts",
+        title: "Error",
+        description: "Failed to fetch contacts",
         variant: "destructive",
       });
     } finally {

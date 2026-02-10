@@ -11,10 +11,6 @@ export interface Deal {
   deal_name: string;
   stage: DealStage;
   
-  // Linked entities
-  account_id?: string | null;
-  contact_id?: string | null;
-  
   // Lead stage fields
   project_name?: string;
   customer_name?: string;
