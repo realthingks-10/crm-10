@@ -128,6 +128,87 @@ export type Database = {
         }
         Relationships: []
       }
+      backup_schedules: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          frequency: string
+          id: string
+          is_enabled: boolean
+          last_run_at: string | null
+          next_run_at: string | null
+          time_of_day: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          frequency?: string
+          id?: string
+          is_enabled?: boolean
+          last_run_at?: string | null
+          next_run_at?: string | null
+          time_of_day?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          frequency?: string
+          id?: string
+          is_enabled?: boolean
+          last_run_at?: string | null
+          next_run_at?: string | null
+          time_of_day?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      backups: {
+        Row: {
+          backup_type: string
+          created_at: string
+          created_by: string | null
+          file_name: string
+          file_path: string
+          id: string
+          manifest: Json | null
+          module_name: string | null
+          records_count: number | null
+          size_bytes: number | null
+          status: string
+          tables_count: number | null
+        }
+        Insert: {
+          backup_type?: string
+          created_at?: string
+          created_by?: string | null
+          file_name: string
+          file_path: string
+          id?: string
+          manifest?: Json | null
+          module_name?: string | null
+          records_count?: number | null
+          size_bytes?: number | null
+          status?: string
+          tables_count?: number | null
+        }
+        Update: {
+          backup_type?: string
+          created_at?: string
+          created_by?: string | null
+          file_name?: string
+          file_path?: string
+          id?: string
+          manifest?: Json | null
+          module_name?: string | null
+          records_count?: number | null
+          size_bytes?: number | null
+          status?: string
+          tables_count?: number | null
+        }
+        Relationships: []
+      }
       column_preferences: {
         Row: {
           column_widths: Json

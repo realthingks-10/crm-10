@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense, useEffect } from 'react';
-import { Users, Lock, History, Activity, BarChart3 } from 'lucide-react';
+import { Users, Lock, History, Activity, BarChart3, Database } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -11,6 +11,7 @@ import SettingsLoadingSkeleton from './shared/SettingsLoadingSkeleton';
 const UserManagement = lazy(() => import('@/components/UserManagement'));
 const PageAccessSettings = lazy(() => import('@/components/settings/PageAccessSettings'));
 const AuditLogsSettings = lazy(() => import('@/components/settings/AuditLogsSettings'));
+const BackupRestoreSettings = lazy(() => import('@/components/settings/BackupRestoreSettings'));
 
 const adminTabs = [
   { id: 'users', label: 'Users', icon: Users },
@@ -114,14 +115,11 @@ const AdminSettingsPage = ({ defaultSection }: AdminSettingsPageProps) => {
         </TabsContent>
 
         <TabsContent value="system" className="mt-6 space-y-4">
-          <Card>
-            <CardContent className="py-8">
-              <div className="text-center text-muted-foreground">
-                <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>System monitoring coming soon</p>
-              </div>
-            </CardContent>
-          </Card>
+          <SettingsCard icon={Database} title="Data Backup & Restore" description="Export data, manage backups, and restore from previous snapshots">
+            <Suspense fallback={<SettingsLoadingSkeleton />}>
+              <BackupRestoreSettings />
+            </Suspense>
+          </SettingsCard>
         </TabsContent>
 
         <TabsContent value="reports" className="mt-6 space-y-6">
