@@ -1,47 +1,83 @@
 
-# Make Column Headers Sticky Across All Modules
 
-## Problem
-Only the Deals list view has properly sticky column headers. The other modules (Contacts, Accounts, Leads, Action Items) either have nested scroll containers that break CSS `sticky`, or use semi-transparent backgrounds (`bg-muted/50`) that let scrolling content bleed through.
+## Fix Sticky Column Headers Across All Modules
 
-## Root Cause
-The Deals ListView works because:
-1. It uses a single scroll container (`overflow-scroll`) with the Table directly inside
-2. The sticky header uses `bg-muted/80 backdrop-blur-sm z-20` for an opaque, polished look
+### Root Cause Found
 
-The other modules fail because:
-- **Contacts**: `ContactTableBody` wraps the table in an extra `overflow-auto` div, creating a nested scroll container that breaks sticky
-- **Leads**: `LeadTable` also has a nested `overflow-auto` div wrapping the table
-- **Accounts**: Background is only `bg-muted/50` (semi-transparent), letting content show through
-- **Action Items**: Background is only `bg-muted/50`, same transparency issue
+The `Table` UI component (`src/components/ui/table.tsx`, line 9) wraps every table in:
+```html
+<div class="relative w-full overflow-auto">
+```
 
-## Changes
+This creates a **hidden nested scroll container** inside each module. CSS `position: sticky` only works relative to the nearest scrolling ancestor -- so the sticky header sticks to this invisible inner div, not the outer scroll container the user actually sees.
 
-### 1. ContactTableBody (`src/components/contact-table/ContactTableBody.tsx`)
-- Line 245: Remove `overflow-auto` from the wrapper `<div>` so the parent in `ContactTable` is the sole scroll container
-- Lines 247-249, 261, 283: Update all header backgrounds from `bg-muted/50` to `bg-muted/80` and change `z-10` to `z-20`, add `backdrop-blur-sm`
+### Why Deals Works
 
-### 2. AccountTableBody (`src/components/account-table/AccountTableBody.tsx`)
-- Line 213: Update TableHeader from `z-10 bg-muted/50` to `z-20 bg-muted/80 backdrop-blur-sm`
-- Lines 215, 223, 248: Update all TableHead cells from `bg-muted/50` to `bg-muted/80`
+The Deals `ListView` (line 424) has a targeted CSS override:
+```
+[&>div.relative]:!overflow-visible
+```
+This forces the Table's inner wrapper from `overflow-auto` to `overflow-visible`, eliminating the nested scroll container. No other module has this fix.
 
-### 3. LeadTable (`src/components/LeadTable.tsx`)
-- Line 342: Remove `overflow-auto` from the inner wrapper div so the parent `overflow-auto` div (line 341) is the sole scroll container
-- Line 344: Update TableHeader from `z-10` to `z-20`, add `bg-muted/80 backdrop-blur-sm`
-- Lines 346, 358, 377: Update all TableHead cells from `bg-muted/50` to `bg-muted/80`
+### Solution
 
-### 4. ActionItemsTable (`src/components/ActionItemsTable.tsx`)
-- Line 294: Update TableHeader from `z-10` to `z-20`, add `bg-muted/80 backdrop-blur-sm`
-- Line 296: Update TableHead cells from `bg-muted/50` to `bg-muted/80`
+Apply the same `[&>div.relative]:!overflow-visible` override to the scroll container in each broken module. This is the minimal, consistent fix.
 
-## Technical Summary
+### Files to Change
 
-| File | Changes |
-|------|---------|
-| `src/components/contact-table/ContactTableBody.tsx` | Remove nested `overflow-auto`; upgrade header bg to `bg-muted/80 backdrop-blur-sm z-20` |
-| `src/components/account-table/AccountTableBody.tsx` | Upgrade header bg to `bg-muted/80 backdrop-blur-sm z-20` |
-| `src/components/LeadTable.tsx` | Remove nested `overflow-auto`; upgrade header bg to `bg-muted/80 backdrop-blur-sm z-20` |
-| `src/components/ActionItemsTable.tsx` | Upgrade header bg to `bg-muted/80 backdrop-blur-sm z-20` |
+#### 1. ContactTable.tsx (line ~185 in the provided code)
+The scroll container `<div className="flex-1 min-h-0 overflow-auto">` needs the override added:
+```
+flex-1 min-h-0 overflow-auto [&>div>div.relative]:!overflow-visible
+```
+Note: ContactTableBody wraps Table in an extra `<div>`, so the selector needs `>div>div.relative` to reach through.
 
-## Result
-All four modules will match the Deals list view behavior: column headers remain visible and fixed at the top while only record rows scroll vertically.
+#### 2. LeadTable.tsx (line 341)
+The scroll container `<div className="flex-1 min-h-0 overflow-auto">` needs:
+```
+flex-1 min-h-0 overflow-auto [&>div.relative]:!overflow-visible
+```
+LeadTable renders Table directly inside a wrapper div, so selector is `>div.relative` (the Table's wrapper is the first div child's child -- need to verify exact nesting).
+
+#### 3. AccountTable.tsx
+The scroll container wrapping `AccountTableBody` needs the same override. Since AccountTable has its own scroll wrapper, apply:
+```
+flex-1 min-h-0 overflow-auto [&>div>div.relative]:!overflow-visible
+```
+
+#### 4. ActionItems.tsx (line 320)
+The scroll container `<div className="h-full overflow-auto">` wrapping `ActionItemsTable` needs:
+```
+h-full overflow-auto [&>div>div.relative]:!overflow-visible
+```
+
+### Alternative (Cleaner) Approach
+
+Instead of adding overrides in 4 places, fix the root cause by modifying `src/components/ui/table.tsx` line 9. Change the Table wrapper from `overflow-auto` to `overflow-visible`:
+
+```tsx
+// BEFORE (line 9):
+<div className="relative w-full overflow-auto">
+
+// AFTER:
+<div className="relative w-full overflow-visible">
+```
+
+This single change fixes ALL modules at once and removes the need for the Deals-specific `[&>div.relative]:!overflow-visible` hack. The outer scroll containers in each page already handle horizontal/vertical scrolling.
+
+**Risk assessment:** Changing the base Table component could affect tables elsewhere in the app (e.g., Settings pages, modals). However, since all table usages already have outer scroll containers, this should be safe. The `overflow-auto` on the Table wrapper was a default from shadcn/ui meant as a fallback, but in this app every table is already inside a managed scroll container.
+
+### Recommended Approach
+
+Use the **alternative (cleaner) approach**: modify `table.tsx` once. Then optionally remove the now-unnecessary `[&>div.relative]:!overflow-visible` from ListView.tsx for cleanliness.
+
+### Technical Summary
+
+| File | Change |
+|------|--------|
+| `src/components/ui/table.tsx` | Line 9: Change `overflow-auto` to `overflow-visible` on the Table wrapper div |
+| `src/components/ListView.tsx` (optional cleanup) | Line 424: Remove `[&>div.relative]:!overflow-visible` since it's no longer needed |
+
+### Expected Result
+All modules (Contacts, Accounts, Leads, Action Items, Deals) will have properly sticky column headers that remain fixed at the top while rows scroll.
+
