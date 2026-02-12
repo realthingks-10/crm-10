@@ -25,6 +25,22 @@ const INSERT_ORDER = [
   'keep_alive'
 ]
 
+const BATCH_SIZE = 1000
+
+// Fetch all rows from a table using pagination
+async function fetchAllRows(client: any, table: string): Promise<any[]> {
+  const allData: any[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await client.from(table).select('*').range(from, from + BATCH_SIZE - 1)
+    if (error || !data || data.length === 0) break
+    allData.push(...data)
+    if (data.length < BATCH_SIZE) break
+    from += BATCH_SIZE
+  }
+  return allData
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -105,14 +121,63 @@ Deno.serve(async (req) => {
       })
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // PRE-RESTORE SAFETY BACKUP
+    // ═══════════════════════════════════════════════════════════════
+    console.log('Creating pre-restore safety backup...')
+    const tablesToRestore = Object.keys(backupData)
+    const safetyBackupData: Record<string, any[]> = {}
+    const safetyManifest: Record<string, number> = {}
+    let safetyTotalRecords = 0
+
+    for (const table of tablesToRestore) {
+      const data = await fetchAllRows(adminClient, table)
+      safetyBackupData[table] = data
+      safetyManifest[table] = data.length
+      safetyTotalRecords += data.length
+    }
+
+    const safetyTimestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const safetyFileName = `pre-restore-safety-${safetyTimestamp}.json`
+    const safetyFilePath = `${user.id}/${safetyFileName}`
+
+    const safetyJson = JSON.stringify({
+      version: '1.0',
+      created_at: new Date().toISOString(),
+      created_by: user.id,
+      backup_type: 'pre_restore',
+      tables: tablesToRestore,
+      manifest: safetyManifest,
+      data: safetyBackupData,
+    }, null, 2)
+
+    const safetySizeBytes = new Blob([safetyJson]).size
+
+    await adminClient.storage.from('backups').upload(safetyFilePath, safetyJson, {
+      contentType: 'application/json', upsert: true,
+    })
+
+    await adminClient.from('backups').insert({
+      file_name: safetyFileName,
+      file_path: safetyFilePath,
+      backup_type: 'pre_restore',
+      status: 'completed',
+      created_by: user.id,
+      size_bytes: safetySizeBytes,
+      tables_count: tablesToRestore.length,
+      records_count: safetyTotalRecords,
+      manifest: safetyManifest,
+    })
+
+    console.log('Pre-restore safety backup created:', safetyFileName)
+
+    // ═══════════════════════════════════════════════════════════════
+    // RESTORE
+    // ═══════════════════════════════════════════════════════════════
     const restoredTables: string[] = []
     let restoredRecords = 0
 
-    // Determine tables to restore
-    const tablesToRestore = Object.keys(backupData)
-
     // Delete existing data in reverse dependency order
-    // Skip tables not in the backup (e.g. user_roles, profiles - managed by auth)
     for (const table of DELETE_ORDER) {
       if (tablesToRestore.includes(table)) {
         const { error } = await adminClient.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000')
@@ -126,7 +191,6 @@ Deno.serve(async (req) => {
     for (const table of INSERT_ORDER) {
       if (!backupData[table] || backupData[table].length === 0) continue
 
-      // Insert in batches of 500
       const records = backupData[table]
       for (let i = 0; i < records.length; i += 500) {
         const batch = records.slice(i, i + 500)
@@ -159,6 +223,7 @@ Deno.serve(async (req) => {
       success: true,
       restoredTables,
       restoredRecords,
+      safetyBackup: safetyFileName,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
