@@ -48,23 +48,23 @@ All colors MUST be HSL.
 
     --radius: 0rem;
 
-    /* Stage Colors - Vibrant, Professional Palette */
-    --stage-lead: 239 45% 85%;
-    --stage-lead-foreground: 239 55% 30%;
-    --stage-discussions: 180 50% 82%;
-    --stage-discussions-foreground: 180 55% 25%;
-    --stage-qualified: 188 55% 80%;
-    --stage-qualified-foreground: 188 60% 25%;
-    --stage-rfq: 204 35% 85%;
-    --stage-rfq-foreground: 204 40% 30%;
-    --stage-offered: 30 55% 82%;
-    --stage-offered-foreground: 30 65% 25%;
-    --stage-won: 142 50% 78%;
-    --stage-won-foreground: 142 60% 22%;
-    --stage-lost: 0 50% 88%;
-    --stage-lost-foreground: 0 60% 30%;
-    --stage-dropped: 0 0% 82%;
-    --stage-dropped-foreground: 0 0% 30%;
+    /* Stage Colors - Distinct, high-contrast palette */
+    --stage-lead: 239 55% 80%;
+    --stage-lead-foreground: 255 70% 50%;
+    --stage-discussions: 180 55% 78%;
+    --stage-discussions-foreground: 195 80% 38%;
+    --stage-qualified: 188 60% 75%;
+    --stage-qualified-foreground: 160 70% 36%;
+    --stage-rfq: 204 45% 80%;
+    --stage-rfq-foreground: 220 65% 48%;
+    --stage-offered: 30 65% 78%;
+    --stage-offered-foreground: 25 80% 45%;
+    --stage-won: 142 55% 72%;
+    --stage-won-foreground: 142 72% 32%;
+    --stage-lost: 0 60% 84%;
+    --stage-lost-foreground: 0 72% 48%;
+    --stage-dropped: 0 0% 78%;
+    --stage-dropped-foreground: 0 0% 42%;
 
     /* Light Blue Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(204 94% 50%), hsl(204 94% 55%));
@@ -484,7 +484,7 @@ All colors MUST be HSL.
   }
   to { 
     opacity: 0; 
-    transform: translateX(20px);
+    transform: translateX(20px) scale(0.97);
   }
 }
 
@@ -497,4 +497,32 @@ All colors MUST be HSL.
 .deal-card-dimmed:hover {
   opacity: 0.85;
   transform: scale(1.01);
+}
+
+/* Always-visible scrollbars utility */
+.always-show-scrollbars {
+  overflow: scroll !important;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) transparent;
+}
+
+.always-show-scrollbars::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  display: block;
+}
+
+.always-show-scrollbars::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.always-show-scrollbars::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted));
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.always-show-scrollbars::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground));
 }

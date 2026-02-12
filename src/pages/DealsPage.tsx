@@ -354,38 +354,42 @@ const DealsPage = () => {
     return null;
   }
 
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      <ToggleGroup 
+        type="single" 
+        value={activeView} 
+        onValueChange={(value) => value && setActiveView(value as 'kanban' | 'list')}
+        className="border rounded-lg p-0.5 bg-muted/50"
+      >
+        <ToggleGroupItem 
+          value="kanban" 
+          aria-label="Kanban view" 
+          className="px-3 h-8 text-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm rounded-md"
+        >
+          <LayoutGrid className="h-4 w-4 mr-1" />
+          Kanban
+        </ToggleGroupItem>
+        <ToggleGroupItem 
+          value="list" 
+          aria-label="List view" 
+          className="px-3 h-8 text-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm rounded-md"
+        >
+          <List className="h-4 w-4 mr-1" />
+          List
+        </ToggleGroupItem>
+      </ToggleGroup>
+
+      <Button onClick={() => handleCreateDeal('Lead')}>
+        <Plus className="w-4 h-4 mr-2" />
+        New Deal
+      </Button>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header - fixed height matching sidebar */}
-      <div className="flex-shrink-0 h-16 border-b bg-background px-6 flex items-center">
-        <div className="flex items-center justify-between w-full">
-          <h1 className="text-2xl font-semibold text-foreground">Deals</h1>
-          <div className="flex items-center gap-3">
-            {/* View Toggle - using ToggleGroup like Action Items */}
-            <ToggleGroup 
-              type="single" 
-              value={activeView} 
-              onValueChange={(value) => value && setActiveView(value as 'kanban' | 'list')}
-            >
-              <ToggleGroupItem value="kanban" aria-label="Kanban view" className="px-3">
-                <LayoutGrid className="h-4 w-4 mr-1" />
-                Kanban
-              </ToggleGroupItem>
-              <ToggleGroupItem value="list" aria-label="List view" className="px-3">
-                <List className="h-4 w-4 mr-1" />
-                List
-              </ToggleGroupItem>
-            </ToggleGroup>
-
-            <Button onClick={() => handleCreateDeal('Lead')}>
-              <Plus className="w-4 h-4 mr-2" />
-              New Deal
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content Area - Takes remaining height */}
+      {/* Main Content Area - Takes full height, header is inside each view */}
       <div className="flex-1 min-h-0 overflow-hidden">
         {activeView === 'kanban' ? (
           <KanbanBoard
@@ -396,6 +400,7 @@ const DealsPage = () => {
             onDeleteDeals={handleDeleteDeals}
             onImportDeals={handleImportDeals}
             onRefresh={fetchDeals}
+            headerActions={headerActions}
           />
         ) : (
           <ListView
@@ -404,6 +409,7 @@ const DealsPage = () => {
             onUpdateDeal={handleUpdateDeal}
             onDeleteDeals={handleDeleteDeals}
             onImportDeals={handleImportDeals}
+            headerActions={headerActions}
           />
         )}
       </div>

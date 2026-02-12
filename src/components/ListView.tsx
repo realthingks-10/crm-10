@@ -23,6 +23,7 @@ interface ListViewProps {
   onUpdateDeal: (dealId: string, updates: Partial<Deal>) => void;
   onDeleteDeals: (dealIds: string[]) => void;
   onImportDeals: (deals: Partial<Deal>[]) => void;
+  headerActions?: React.ReactNode;
 }
 
 export const ListView = ({ 
@@ -30,7 +31,8 @@ export const ListView = ({
   onDealClick, 
   onUpdateDeal, 
   onDeleteDeals, 
-  onImportDeals 
+  onImportDeals,
+  headerActions 
 }: ListViewProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filters, setFilters] = useState<AdvancedFilterState>({
@@ -59,6 +61,9 @@ export const ListView = ({
   // Delete confirmation state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [dealToDelete, setDealToDelete] = useState<string | null>(null);
+
+  // Single active editor state
+  const [editingCellKey, setEditingCellKey] = useState<string | null>(null);
 
   // Column width and visibility preferences from database
   const { columnWidths, columns, saveColumnWidths, saveColumns } = useDealsColumnPreferences();
@@ -187,13 +192,30 @@ export const ListView = ({
     if (field === 'stage') return 'stage';
     if (field === 'priority') return 'priority';
     if (['total_contract_value', 'total_revenue'].includes(field)) return 'currency';
-    if (['expected_closing_date', 'start_date', 'end_date', 'proposal_due_date'].includes(field)) return 'date';
-    if (['probability', 'project_duration'].includes(field)) return 'number';
+    if (['expected_closing_date', 'start_date', 'end_date', 'proposal_due_date', 'rfq_received_date', 'signed_contract_date', 'implementation_start_date'].includes(field)) return 'date';
+    if (['probability', 'project_duration', 'quarterly_revenue_q1', 'quarterly_revenue_q2', 'quarterly_revenue_q3', 'quarterly_revenue_q4'].includes(field)) return 'number';
+    if (['customer_challenges', 'business_value', 'decision_maker_level'].includes(field)) return 'select';
+    if (field === 'relationship_strength') return 'select';
+    if (field === 'rfq_status') return 'select';
+    if (field === 'handoff_status') return 'select';
+    if (field === 'is_recurring') return 'select';
+    if (field === 'currency_type') return 'select';
+    if (['internal_comment', 'customer_need', 'action_items', 'won_reason', 'lost_reason', 'need_improvement', 'drop_reason'].includes(field)) return 'textarea';
     return 'text';
   };
 
   const getFieldOptions = (field: string): string[] => {
-    return [];
+    const optionsMap: Record<string, string[]> = {
+      customer_challenges: ['Open', 'Ongoing', 'Done'],
+      business_value: ['Open', 'Ongoing', 'Done'],
+      decision_maker_level: ['Open', 'Ongoing', 'Done'],
+      relationship_strength: ['Low', 'Medium', 'High'],
+      rfq_status: ['Drafted', 'Submitted', 'Rejected', 'Accepted'],
+      handoff_status: ['Not Started', 'In Progress', 'Complete'],
+      is_recurring: ['Yes', 'No', 'Unclear'],
+      currency_type: ['EUR', 'USD', 'INR'],
+    };
+    return optionsMap[field] || [];
   };
 
   const visibleColumns = columns
@@ -347,7 +369,7 @@ export const ListView = ({
   return (
     <div className="h-full flex flex-col bg-background">
       {/* Filter Bar - consistent with other modules */}
-      <div className="flex-shrink-0 border-b bg-muted/30 px-6 py-3">
+      <div className="flex-shrink-0 border-b border-border bg-background px-6 py-3">
         <div className="flex flex-wrap items-center gap-3">
           {/* Search - responsive width like Action Items */}
           <div className="relative flex-1 min-w-[200px] max-w-[300px]">
@@ -356,7 +378,7 @@ export const ListView = ({
               placeholder="Search all deal details..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 transition-all hover:border-primary/50 focus:border-primary"
+              className="pl-9 h-9 transition-all hover:border-primary/50 focus:border-primary"
             />
           </div>
           
@@ -393,11 +415,13 @@ export const ListView = ({
             onColumnCustomize={() => setColumnCustomizerOpen(true)}
             showColumns={true}
           />
+
+          {headerActions}
         </div>
       </div>
 
       {/* Content Area - single scroll container */}
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-scroll always-show-scrollbars [&>div.relative]:!overflow-visible">
         <Table ref={tableRef} className="w-full">
           <TableHeader className="sticky top-0 bg-muted/80 backdrop-blur-sm z-20 border-b-2">
             <TableRow className="hover:bg-muted/60 transition-colors border-b">
@@ -426,7 +450,7 @@ export const ListView = ({
                     }
                   }}
                 >
-                  <div className="flex items-center gap-2 pr-4 text-foreground">
+                  <div className="flex items-center gap-2 pr-4 text-foreground whitespace-nowrap">
                     {column.label}
                     {sortBy !== column.field ? (
                       <ArrowUpDown className="w-3 h-3 text-muted-foreground/40" />
@@ -457,8 +481,8 @@ export const ListView = ({
               paginatedDeals.map((deal) => (
                 <TableRow 
                   key={deal.id} 
-                  className={`group hover:bg-muted/50 transition-all ${
-                    selectedDeals.has(deal.id) ? 'bg-primary/5' : ''
+                  className={`group hover:bg-muted/30 transition-all ${
+                    selectedDeals.has(deal.id) ? 'bg-primary/5' : 'even:bg-muted/10'
                   }`}
                 >
                   <TableCell className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
@@ -484,6 +508,9 @@ export const ListView = ({
                         onSave={handleInlineEdit}
                         type={getFieldType(column.field)}
                         options={getFieldOptions(column.field)}
+                        isEditing={editingCellKey === `${deal.id}-${column.field}`}
+                        onEditStart={() => setEditingCellKey(`${deal.id}-${column.field}`)}
+                        onEditEnd={() => setEditingCellKey(null)}
                       />
                     </TableCell>
                   ))}
@@ -564,6 +591,7 @@ export const ListView = ({
               <Button
                 variant="outline"
                 size="sm"
+                className="shadow-sm"
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
               >
@@ -576,6 +604,7 @@ export const ListView = ({
               <Button
                 variant="outline"
                 size="sm"
+                className="shadow-sm"
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage >= totalPages}
               >

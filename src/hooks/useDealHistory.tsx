@@ -36,7 +36,7 @@ export const useDealHistory = (dealId: string | null) => {
         .select('*')
         .eq('resource_type', 'deals')
         .eq('resource_id', dealId)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: true })
         .limit(50);
       
       if (error) {
@@ -59,7 +59,7 @@ export const useDealHistory = (dealId: string | null) => {
         .from('deal_action_items')
         .select('*')
         .eq('deal_id', dealId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
       
       if (error) {
         console.error('Error fetching deal action items:', error);

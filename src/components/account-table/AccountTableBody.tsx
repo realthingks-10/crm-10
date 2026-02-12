@@ -210,9 +210,9 @@ export const AccountTableBody = ({
     <>
       <div className={cn(isResizing && "select-none")}>
         <Table>
-          <TableHeader className="sticky top-0 z-10 bg-muted/50">
+          <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur-sm">
             <TableRow className="border-b-2">
-              <TableHead className="w-10 py-3 bg-muted/50">
+              <TableHead className="w-10 py-3 bg-muted/80">
                 <Checkbox checked={allSelected} onCheckedChange={handleSelectAll} aria-label="Select all"
                   className={someSelected ? "data-[state=checked]:bg-primary/50" : ""} />
               </TableHead>
@@ -220,7 +220,7 @@ export const AccountTableBody = ({
                 <TableHead 
                   key={column.field} 
                   className={cn(
-                    "relative bg-muted/50 font-bold text-foreground py-3 px-4",
+                    "relative bg-muted/80 font-bold text-foreground py-3 px-4",
                     sortField === column.field && column.field !== 'linked_contacts' && "bg-accent"
                   )}
                   style={{ 
@@ -245,7 +245,7 @@ export const AccountTableBody = ({
                   )}
                 </TableHead>
               ))}
-              <TableHead className="w-20 bg-muted/50 py-3"></TableHead>
+              <TableHead className="w-20 bg-muted/80 py-3"></TableHead>
             </TableRow>
           </TableHeader>
         <TableBody>

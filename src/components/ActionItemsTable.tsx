@@ -291,9 +291,9 @@ export function ActionItemsTable({
   }];
   return <div className={cn(isResizing && 'select-none')}>
       <Table>
-        <TableHeader className="sticky top-0 z-10">
-          <TableRow className="bg-muted/50 border-b-2 border-border">
-            {columns.map(col => <TableHead key={col.field} className={cn('relative text-sm font-bold bg-muted/50 py-3 h-11 text-foreground', col.compact ? 'px-1 text-center' : 'px-3 text-left', col.sortable && 'cursor-pointer hover:bg-muted/80', sortField === col.field && 'bg-accent', col.field === 'checkbox' && 'w-10', col.field === 'actions' && 'w-[60px] px-2')} style={{
+        <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur-sm">
+          <TableRow className="bg-muted/80 border-b-2 border-border">
+            {columns.map(col => <TableHead key={col.field} className={cn('relative text-sm font-bold bg-muted/80 py-3 h-11 text-foreground', col.compact ? 'px-1 text-center' : 'px-3 text-left', col.sortable && 'cursor-pointer hover:bg-muted/80', sortField === col.field && 'bg-accent', col.field === 'checkbox' && 'w-10', col.field === 'actions' && 'w-[60px] px-2')} style={{
             ...(col.field !== 'checkbox' && col.field !== 'actions' && !col.compact ? { width: `${col.width}px` } : {}),
             ...(col.compact ? { width: '6.67%', maxWidth: '6.67%' } : {}),
             ...(col.field === 'title' ? { minWidth: '200px' } : {}),

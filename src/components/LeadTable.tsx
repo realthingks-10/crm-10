@@ -338,12 +338,11 @@ const LeadTable = ({
   return (
     <div className="flex flex-col h-full">
       {/* Table Content */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        <div className={cn("overflow-auto", isResizing && "select-none")}>
+      <div className={cn("flex-1 min-h-0 overflow-auto", isResizing && "select-none")}>
           <Table>
-            <TableHeader className="sticky top-0 z-10">
-              <TableRow className="bg-muted/50 hover:bg-muted/60 border-b-2">
-                <TableHead className="w-12 text-center font-bold text-foreground bg-muted/50 py-3">
+            <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur-sm">
+              <TableRow className="bg-muted/80 hover:bg-muted/80 border-b-2">
+                <TableHead className="w-12 text-center font-bold text-foreground bg-muted/80 py-3">
                   <div className="flex justify-center">
                     <Checkbox 
                       checked={selectedLeads.length > 0 && selectedLeads.length === pageLeads.length} 
@@ -355,7 +354,7 @@ const LeadTable = ({
                   <TableHead 
                     key={column.field} 
                     className={cn(
-                      "relative text-left font-bold text-foreground bg-muted/50 px-4 py-3 whitespace-nowrap",
+                      "relative text-left font-bold text-foreground bg-muted/80 px-4 py-3 whitespace-nowrap",
                       sortField === column.field && "bg-accent"
                     )}
                     style={{ width: `${columnWidths[column.field] || 120}px`, minWidth: column.field === 'lead_name' ? '150px' : '60px' }}
@@ -374,7 +373,7 @@ const LeadTable = ({
                     />
                   </TableHead>
                 ))}
-                <TableHead className="w-20 bg-muted/50 py-3"></TableHead>
+                <TableHead className="w-20 bg-muted/80 py-3"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -465,7 +464,6 @@ const LeadTable = ({
               )}
             </TableBody>
           </Table>
-        </div>
       </div>
 
       {/* Always show pagination */}

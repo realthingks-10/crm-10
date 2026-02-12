@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { TrendingUp, Target, Euro, Calendar, Edit2, Check, X, AlertCircle } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useYearlyRevenueData, useAvailableYears } from "@/hooks/useYearlyRevenueData";
@@ -11,30 +12,36 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-const YearlyRevenueSummary = () => {
-  const {
-    user
-  } = useAuth();
-  const {
-    toast
-  } = useToast();
-  const navigate = useNavigate();
-  const {
-    years,
-    isLoading: yearsLoading
-  } = useAvailableYears();
 
-  // Create years array from 2023 to 2026, default to current year (2025 for setup)
+interface YearlyRevenueSummaryProps {
+  selectedYear?: number;
+  onYearChange?: (year: number) => void;
+  hideHeader?: boolean;
+}
+
+const quarterColors = [
+  { border: 'border-l-blue-500', bg: 'bg-blue-500/10', text: 'text-blue-500' },
+  { border: 'border-l-teal-500', bg: 'bg-teal-500/10', text: 'text-teal-500' },
+  { border: 'border-l-amber-500', bg: 'bg-amber-500/10', text: 'text-amber-500' },
+  { border: 'border-l-purple-500', bg: 'bg-purple-500/10', text: 'text-purple-500' },
+];
+
+const YearlyRevenueSummary = ({ selectedYear: externalYear, onYearChange, hideHeader }: YearlyRevenueSummaryProps) => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const { years, isLoading: yearsLoading } = useAvailableYears();
+
   const availableYears = [2023, 2024, 2025, 2026];
   const currentYear = new Date().getFullYear();
   const defaultYear = availableYears.includes(currentYear) ? currentYear : 2025;
-  const [selectedYear, setSelectedYear] = useState(defaultYear);
-  const {
-    revenueData,
-    isLoading: dataLoading
-  } = useYearlyRevenueData(selectedYear);
+  const [internalYear, setInternalYear] = useState(defaultYear);
+  const selectedYear = externalYear ?? internalYear;
+  const setSelectedYear = onYearChange ?? setInternalYear;
+  const { revenueData, isLoading: dataLoading } = useYearlyRevenueData(selectedYear);
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetValue, setTargetValue] = useState('');
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -43,37 +50,29 @@ const YearlyRevenueSummary = () => {
       maximumFractionDigits: 0
     }).format(amount);
   };
+
   const getProgressPercentage = (actual: number, target: number) => {
     if (target === 0) return 0;
-    return actual / target * 100;
+    return Math.min(actual / target * 100, 100);
   };
+
   const handleSaveTarget = async () => {
     if (!user || !targetValue) return;
     try {
-      const {
-        error
-      } = await supabase.from('yearly_revenue_targets').upsert({
+      const { error } = await supabase.from('yearly_revenue_targets').upsert({
         year: selectedYear,
         total_target: Number(targetValue),
         created_by: user.id
-      }, {
-        onConflict: 'year'
-      });
+      }, { onConflict: 'year' });
       if (error) throw error;
-      toast({
-        title: "Success",
-        description: "Target updated successfully"
-      });
+      toast({ title: "Success", description: "Target updated successfully" });
       setEditingTarget(false);
       setTargetValue('');
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update target",
-        variant: "destructive"
-      });
+      toast({ title: "Error", description: "Failed to update target", variant: "destructive" });
     }
   };
+
   const handleCardClick = (type: 'actual' | 'projected', quarter?: string) => {
     const params = new URLSearchParams();
     if (type === 'actual') {
@@ -88,43 +87,48 @@ const YearlyRevenueSummary = () => {
     }
     navigate(`/deals?${params.toString()}`);
   };
+
   if (yearsLoading || dataLoading) {
-    return <div className="space-y-6">
+    return (
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-10 w-32" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32" />)}
         </div>
-      </div>;
+      </div>
+    );
   }
 
-  // Show empty state when no deals exist for the selected year
-  if (revenueData && !revenueData.hasDeals) {
-    return <div className="space-y-6">
-        {/* Header with Year Selector and Notification Bell */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground">Revenue Analytics</h2>
-            <p className="text-muted-foreground"> </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <NotificationBell placement="down" size="small" />
-            <Select value={selectedYear.toString()} onValueChange={value => setSelectedYear(parseInt(value))}>
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {availableYears.map(year => <SelectItem key={year} value={year.toString()}>
-                    {year}
-                  </SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+  const YearSelector = () => (
+    <Select value={selectedYear.toString()} onValueChange={value => setSelectedYear(parseInt(value))}>
+      <SelectTrigger className="w-32">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {availableYears.map(year => (
+          <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
-        {/* Empty State */}
+  if (revenueData && !revenueData.hasDeals) {
+    return (
+      <div className="space-y-6">
+        {!hideHeader && (
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-foreground">Revenue Analytics</h2>
+            </div>
+            <div className="flex items-center gap-4">
+              <NotificationBell placement="down" size="small" />
+              <YearSelector />
+            </div>
+          </div>
+        )}
         <Card className="py-12">
           <CardContent className="text-center">
             <div className="flex flex-col items-center gap-4">
@@ -138,67 +142,83 @@ const YearlyRevenueSummary = () => {
             </div>
           </CardContent>
         </Card>
-      </div>;
+      </div>
+    );
   }
+
   const totalCombined = (revenueData?.totalActual || 0) + (revenueData?.totalProjected || 0);
   const progressPercentage = getProgressPercentage(revenueData?.totalActual || 0, revenueData?.target || 0);
-  return <div className="space-y-6">
-      {/* Header with Year Selector and Notification Bell */}
-      <div className="flex items-center justify-between">
-        <div>
-          
-          <p className="text-muted-foreground"> </p>
+
+  return (
+    <div className="space-y-6">
+      {!hideHeader && (
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-muted-foreground"> </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <NotificationBell placement="down" size="small" />
+            <YearSelector />
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <NotificationBell placement="down" size="small" />
-          <Select value={selectedYear.toString()} onValueChange={value => setSelectedYear(parseInt(value))}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {availableYears.map(year => <SelectItem key={year} value={year.toString()}>
-                  {year}
-                </SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="hover-scale">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Annual Target */}
+        <Card className="hover-scale border-l-4 border-l-orange-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Annual Target</CardTitle>
             <div className="flex items-center gap-1">
-              <Target className="w-4 h-4 text-primary" />
-              {!editingTarget ? <Button variant="ghost" size="sm" onClick={() => {
-              setEditingTarget(true);
-              setTargetValue(revenueData?.target?.toString() || '');
-            }}>
+              <div className="bg-orange-500/10 p-2 rounded-full">
+                <Target className="w-4 h-4 text-orange-500" />
+              </div>
+              {!editingTarget ? (
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setEditingTarget(true);
+                  setTargetValue(revenueData?.target?.toString() || '');
+                }}>
                   <Edit2 className="w-3 h-3" />
-                </Button> : <div className="flex gap-1">
+                </Button>
+              ) : (
+                <div className="flex gap-1">
                   <Button variant="ghost" size="sm" onClick={handleSaveTarget}>
                     <Check className="w-3 h-3" />
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => setEditingTarget(false)}>
                     <X className="w-3 h-3" />
                   </Button>
-                </div>}
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent>
-            {editingTarget ? <Input value={targetValue} onChange={e => setTargetValue(e.target.value)} placeholder="Enter target amount" type="number" /> : <div className="text-2xl font-bold">{formatCurrency(revenueData?.target || 0)}</div>}
-            <p className="text-xs text-muted-foreground">Set for {selectedYear}</p>
+            {editingTarget ? (
+              <Input value={targetValue} onChange={e => setTargetValue(e.target.value)} placeholder="Enter target amount" type="number" />
+            ) : (
+              <div className="text-2xl font-bold">{formatCurrency(revenueData?.target || 0)}</div>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">Set for {selectedYear}</p>
+            <div className="mt-3 space-y-1">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Achievement</span>
+                <span>{progressPercentage.toFixed(1)}%</span>
+              </div>
+              <Progress value={progressPercentage} className="h-2" />
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="hover-scale cursor-pointer" onClick={() => handleCardClick('actual')}>
+        {/* Actual Revenue */}
+        <Card className="hover-scale cursor-pointer border-l-4 border-l-green-500" onClick={() => handleCardClick('actual')}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Actual Revenue</CardTitle>
-            <Euro className="w-4 h-4 text-green-600" />
+            <div className="bg-green-500/10 p-2 rounded-full">
+              <Euro className="w-4 h-4 text-green-500" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold text-green-500">
               {formatCurrency(revenueData?.totalActual || 0)}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -207,26 +227,32 @@ const YearlyRevenueSummary = () => {
           </CardContent>
         </Card>
 
-        <Card className="hover-scale cursor-pointer" onClick={() => handleCardClick('projected')}>
+        {/* Projected Revenue */}
+        <Card className="hover-scale cursor-pointer border-l-4 border-l-blue-500" onClick={() => handleCardClick('projected')}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Projected Revenue</CardTitle>
-            <TrendingUp className="w-4 h-4 text-blue-600" />
+            <div className="bg-blue-500/10 p-2 rounded-full">
+              <TrendingUp className="w-4 h-4 text-blue-500" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
+            <div className="text-2xl font-bold text-blue-500">
               {formatCurrency(revenueData?.totalProjected || 0)}
             </div>
             <p className="text-xs text-muted-foreground">From RFQ deals</p>
           </CardContent>
         </Card>
 
-        <Card className="hover-scale">
+        {/* Total Forecast */}
+        <Card className="hover-scale border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Forecast</CardTitle>
-            <Calendar className="w-4 h-4 text-purple-600" />
+            <div className="bg-purple-500/10 p-2 rounded-full">
+              <Calendar className="w-4 h-4 text-purple-500" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
+            <div className="text-2xl font-bold text-purple-500">
               {formatCurrency(totalCombined)}
             </div>
             <p className="text-xs text-muted-foreground">Actual + Projected</p>
@@ -243,41 +269,60 @@ const YearlyRevenueSummary = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {(['q1', 'q2', 'q3', 'q4'] as const).map((quarter, index) => <div key={quarter} className="space-y-3">
-                <div className="text-center">
-                  <h4 className="font-semibold text-lg">Q{index + 1}</h4>
-                  <p className="text-sm text-muted-foreground">
-                    {quarter === 'q1' && 'Jan - Mar'}
-                    {quarter === 'q2' && 'Apr - Jun'}
-                    {quarter === 'q3' && 'Jul - Sep'}
-                    {quarter === 'q4' && 'Oct - Dec'}
-                  </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {(['q1', 'q2', 'q3', 'q4'] as const).map((quarter, index) => {
+              const colors = quarterColors[index];
+              return (
+                <div key={quarter} className={`border-l-4 ${colors.border} bg-muted/30 rounded-lg p-4 space-y-3`}>
+                  <div className="text-center">
+                    <h4 className={`font-semibold text-lg ${colors.text}`}>Q{index + 1}</h4>
+                    <p className="text-sm text-muted-foreground">
+                      {quarter === 'q1' && 'Jan - Mar'}
+                      {quarter === 'q2' && 'Apr - Jun'}
+                      {quarter === 'q3' && 'Jul - Sep'}
+                      {quarter === 'q4' && 'Oct - Dec'}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <div
+                      className="flex justify-between items-center cursor-pointer hover:bg-muted/60 p-2 rounded transition-colors"
+                      onClick={() => handleCardClick('actual', quarter)}
+                    >
+                      <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                        Actual
+                      </span>
+                      <span className="font-semibold text-green-500">
+                        {formatCurrency(revenueData?.actualRevenue[quarter] || 0)}
+                      </span>
+                    </div>
+                    <div
+                      className="flex justify-between items-center cursor-pointer hover:bg-muted/60 p-2 rounded transition-colors"
+                      onClick={() => handleCardClick('projected', quarter)}
+                    >
+                      <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                        Projected
+                      </span>
+                      <span className="font-semibold text-blue-500">
+                        {formatCurrency(revenueData?.projectedRevenue[quarter] || 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-border">
+                      <span className="text-sm font-semibold">Total</span>
+                      <span className="font-bold">
+                        {formatCurrency((revenueData?.actualRevenue[quarter] || 0) + (revenueData?.projectedRevenue[quarter] || 0))}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center cursor-pointer hover:bg-muted p-2 rounded" onClick={() => handleCardClick('actual', quarter)}>
-                    <span className="text-sm text-muted-foreground">Actual</span>
-                    <span className="font-semibold text-green-600">
-                      {formatCurrency(revenueData?.actualRevenue[quarter] || 0)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center cursor-pointer hover:bg-muted p-2 rounded" onClick={() => handleCardClick('projected', quarter)}>
-                    <span className="text-sm text-muted-foreground">Projected</span>
-                    <span className="font-semibold text-blue-600">
-                      {formatCurrency(revenueData?.projectedRevenue[quarter] || 0)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center pt-2 border-t">
-                    <span className="text-sm font-medium">Total</span>
-                    <span className="font-bold">
-                      {formatCurrency((revenueData?.actualRevenue[quarter] || 0) + (revenueData?.projectedRevenue[quarter] || 0))}
-                    </span>
-                  </div>
-                </div>
-              </div>)}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
-    </div>;
+    </div>
+  );
 };
+
 export default YearlyRevenueSummary;

@@ -242,11 +242,11 @@ export const ContactTableBody = ({
 
   return (
     <>
-      <div className={cn("overflow-auto", isResizing && "select-none")}>
+      <div className={cn(isResizing && "select-none")}>
         <Table>
-          <TableHeader className="sticky top-0 z-10">
-            <TableRow className="bg-muted/50 hover:bg-muted/60 border-b-2">
-              <TableHead className="w-12 text-center font-bold text-foreground bg-muted/50 py-3">
+          <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur-sm">
+            <TableRow className="bg-muted/80 hover:bg-muted/80 border-b-2">
+              <TableHead className="w-12 text-center font-bold text-foreground bg-muted/80 py-3">
                 <div className="flex justify-center">
                   <Checkbox
                     checked={selectedContacts.length > 0 && selectedContacts.length === Math.min(pageContacts.length, 50)}
@@ -258,7 +258,7 @@ export const ContactTableBody = ({
                 <TableHead 
                   key={column.field} 
                   className={cn(
-                    "relative text-left font-bold text-foreground bg-muted/50 px-4 py-3",
+                    "relative text-left font-bold text-foreground bg-muted/80 px-4 py-3",
                     sortField === column.field && "bg-accent"
                   )}
                   style={{ width: `${columnWidths[column.field] || 120}px`, minWidth: column.field === 'contact_name' ? '150px' : '60px' }}
@@ -280,7 +280,7 @@ export const ContactTableBody = ({
                   />
                 </TableHead>
               ))}
-              <TableHead className="w-20 bg-muted/50 py-3"></TableHead>
+              <TableHead className="w-20 bg-muted/80 py-3"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

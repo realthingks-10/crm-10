@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Deal, DealStage, STAGE_COLORS } from "@/types/deal";
 import { format } from "date-fns";
-import { XCircle, PanelRightOpen } from "lucide-react";
+import { XCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DealCardProps {
@@ -80,13 +80,14 @@ export const DealCard = ({
   return (
     <Card
       className={cn(
-        `deal-card group cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 border-l-3 border-border/40`,
+        `deal-card group cursor-pointer transition-all duration-300 border-l-3 border-border/40`,
+        !isExpanded && 'hover:shadow-lg hover:-translate-y-0.5',
         stageBorderColor,
         stageCardTint,
         isDragging && 'opacity-50 rotate-2 scale-105',
         isSelected && 'ring-2 ring-primary bg-primary/5 border-primary',
         selectionMode && 'pl-8',
-        isExpanded && 'ring-2 ring-primary ring-offset-2 shadow-xl scale-[1.02] border-primary z-10',
+        isExpanded && 'ring-2 ring-primary shadow-md border-primary z-10',
         isDimmed && 'deal-card-dimmed'
       )}
       onClick={onClick}
@@ -136,7 +137,7 @@ export const DealCard = ({
               <div className="w-12 bg-muted/50 rounded-full h-1.5">
                 <div 
                   className="bg-primary/70 rounded-full h-1.5 transition-all duration-300" 
-                  style={{ width: `${deal.probability}%` }}
+                  style={{ width: `${Math.max(deal.probability || 0, 2)}%` }}
                 />
               </div>
               <span className="text-xs font-medium text-foreground">{deal.probability}%</span>
@@ -211,9 +212,9 @@ export const DealCard = ({
               variant="ghost"
               onClick={handleExpand}
               className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-1 h-6 w-6 hover:bg-primary/10 text-muted-foreground hover:text-primary"
-              title="Expand details"
+              title="View details"
             >
-              <PanelRightOpen className="w-3.5 h-3.5" />
+              <Info className="w-3.5 h-3.5" />
             </Button>
           )}
         </div>

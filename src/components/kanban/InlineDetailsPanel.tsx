@@ -9,6 +9,8 @@ interface InlineDetailsPanelProps {
   transition: TransitionState;
   onClose: () => void;
   onOpenActionItemModal?: (actionItem?: any) => void;
+  addDetailOpen?: boolean;
+  onAddDetailOpenChange?: (open: boolean) => void;
 }
 
 export function InlineDetailsPanel({
@@ -16,10 +18,16 @@ export function InlineDetailsPanel({
   transition,
   onClose,
   onOpenActionItemModal,
+  addDetailOpen,
+  onAddDetailOpenChange,
 }: InlineDetailsPanelProps) {
   return (
     <div 
-      className="flex flex-col overflow-y-auto"
+      className={cn(
+        "flex flex-col overflow-y-auto",
+        transition === 'expanding' && 'inline-details-entering',
+        transition === 'collapsing' && 'inline-details-exiting',
+      )}
       style={{ 
         minHeight: '550px',
         maxHeight: 'calc(100vh - 140px)',
@@ -29,6 +37,8 @@ export function InlineDetailsPanel({
         deal={deal} 
         onClose={onClose}
         onOpenActionItemModal={onOpenActionItemModal}
+        addDetailOpen={addDetailOpen}
+        onAddDetailOpenChange={onAddDetailOpenChange}
       />
     </div>
   );
