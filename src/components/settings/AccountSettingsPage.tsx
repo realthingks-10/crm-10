@@ -116,8 +116,14 @@ const AccountSettingsPage = () => {
         .eq('id', user.id)
         .single();
 
+      // Prefer auth display name if profile full_name looks like an email
+      const profileName = profileData?.full_name;
+      const authName = user.user_metadata?.full_name;
+      const isEmailLikeName = profileName && profileName.includes('@');
+      const resolvedName = (isEmailLikeName ? authName : profileName) || authName || '';
+
       const loadedProfile: ProfileData = {
-        full_name: profileData?.full_name || user.user_metadata?.full_name || '',
+        full_name: resolvedName,
         email: profileData?.['Email ID'] || user.email || '',
         phone: profileData?.phone || '',
         timezone: profileData?.timezone || 'Asia/Kolkata',
