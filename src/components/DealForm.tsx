@@ -122,9 +122,9 @@ interface DealFormProps {
     });
   };
 
-  const handleLeadSelect = (lead: any) => {
-    console.log("Selected lead:", lead);
-    // The lead selection is handled in the FormFieldRenderer component
+  const handleContactSelect = (contact: any) => {
+    console.log("Selected contact:", contact);
+    // Auto-fill is handled in FormFieldRenderer
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -360,7 +360,7 @@ interface DealFormProps {
           <DealStageForm
             formData={formData}
             onFieldChange={handleFieldChange}
-            onLeadSelect={handleLeadSelect}
+            onContactSelect={handleContactSelect}
             fieldErrors={fieldErrors}
             stage={currentStage}
             showPreviousStages={showPreviousStages}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -9,11 +9,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuth } from "@/hooks/useAuth";
 import { 
-  Database, Download, Trash2, RefreshCw, ShieldAlert,
-  Clock, HardDrive, FileJson, CalendarClock, FileText, Users,
-  Building2, Briefcase, CheckSquare, RotateCcw
+  Database, Download, RefreshCw, ShieldAlert,
+  Clock, FileJson, CalendarClock, Users,
+  Building2, Briefcase, CheckSquare, RotateCcw, Bell
 } from "lucide-react";
-import { format, addDays, addHours } from "date-fns";
+import { format, addDays } from "date-fns";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -25,6 +25,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Backup {
   id: string;
@@ -48,14 +49,16 @@ interface BackupSchedule {
   is_enabled: boolean;
   next_run_at?: string;
   last_run_at?: string;
+  backup_scope?: string;
+  backup_module?: string;
 }
 
 const MODULES = [
-  { id: 'leads', name: 'Leads', icon: FileText, color: 'text-blue-500' },
   { id: 'contacts', name: 'Contacts', icon: Users, color: 'text-green-500' },
   { id: 'accounts', name: 'Accounts', icon: Building2, color: 'text-purple-500' },
   { id: 'deals', name: 'Deals', icon: Briefcase, color: 'text-orange-500' },
   { id: 'action_items', name: 'Tasks', icon: CheckSquare, color: 'text-cyan-500' },
+  { id: 'notifications', name: 'Notifications', icon: Bell, color: 'text-yellow-500' },
 ];
 
 const FREQUENCY_MAP: Record<string, number> = {
@@ -72,14 +75,35 @@ function computeNextRun(frequency: string, timeOfDay: string): string {
   return next.toISOString();
 }
 
+const LEGACY_MODULE_LABELS: Record<string, string> = {
+  leads: 'Leads (Legacy)',
+};
+
 function getBackupLabel(backup: Backup): string {
   if (backup.backup_type === 'pre_restore') return '🛡️ Safety Snapshot';
-  if (backup.backup_type === 'module' && backup.module_name) {
+  if ((backup.backup_type === 'module' || backup.backup_type === 'scheduled') && backup.module_name) {
     const mod = MODULES.find(m => m.id === backup.module_name);
-    return mod ? mod.name : backup.module_name;
+    const prefix = backup.backup_type === 'scheduled' ? '⏰ ' : '';
+    if (mod) return `${prefix}${mod.name}`;
+    // Fallback for legacy module names (e.g. 'leads' removed from active MODULES)
+    const legacyLabel = LEGACY_MODULE_LABELS[backup.module_name] || backup.module_name;
+    return `${prefix}${legacyLabel}`;
   }
-  if (backup.backup_type === 'scheduled') return 'Scheduled';
+  if (backup.backup_type === 'scheduled') return '⏰ Scheduled Full';
   return 'Full Backup';
+}
+
+function getStatusBadge(status: string) {
+  switch (status) {
+    case 'completed':
+      return <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Completed</Badge>;
+    case 'failed':
+      return <Badge variant="destructive" className="text-[10px]">Failed</Badge>;
+    case 'in_progress':
+      return <Badge variant="secondary" className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">In Progress</Badge>;
+    default:
+      return <Badge variant="secondary" className="text-[10px]">{status}</Badge>;
+  }
 }
 
 const BackupRestoreSettings = () => {
@@ -88,15 +112,15 @@ const BackupRestoreSettings = () => {
   const [creating, setCreating] = useState(false);
   const [creatingModule, setCreatingModule] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedBackup, setSelectedBackup] = useState<Backup | null>(null);
   const [confirmText, setConfirmText] = useState('');
   const [schedule, setSchedule] = useState<BackupSchedule>({
     frequency: 'every_2_days',
     time_of_day: '00:00',
     is_enabled: false,
+    backup_scope: 'full',
+    backup_module: undefined,
   });
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [moduleCounts, setModuleCounts] = useState<Record<string, number>>({});
@@ -136,6 +160,8 @@ const BackupRestoreSettings = () => {
           is_enabled: (data as any).is_enabled || false,
           next_run_at: (data as any).next_run_at,
           last_run_at: (data as any).last_run_at,
+          backup_scope: (data as any).backup_scope || 'full',
+          backup_module: (data as any).backup_module || undefined,
         });
       }
     } catch {
@@ -144,7 +170,7 @@ const BackupRestoreSettings = () => {
   }, []);
 
   const fetchModuleCounts = useCallback(async () => {
-    const tables = ['leads', 'contacts', 'accounts', 'deals', 'action_items'];
+    const tables = ['contacts', 'accounts', 'deals', 'action_items', 'notifications'];
     const results: Record<string, number> = {};
     await Promise.all(tables.map(async (table) => {
       const { count } = await supabase.from(table as any).select('*', { count: 'exact', head: true });
@@ -176,6 +202,8 @@ const BackupRestoreSettings = () => {
         is_enabled: newSchedule.is_enabled,
         created_by: user?.id,
         next_run_at: nextRunAt,
+        backup_scope: newSchedule.backup_scope || 'full',
+        backup_module: newSchedule.backup_scope === 'module' ? newSchedule.backup_module : null,
       };
 
       if (schedule.id) {
@@ -279,29 +307,6 @@ const BackupRestoreSettings = () => {
     }
   };
 
-  const handleDeleteClick = (backup: Backup) => {
-    setSelectedBackup(backup);
-    setShowDeleteDialog(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!selectedBackup) return;
-    setDeleting(selectedBackup.id);
-    setShowDeleteDialog(false);
-    try {
-      await supabase.storage.from('backups').remove([selectedBackup.file_path]);
-      await supabase.from('backups' as any).delete().eq('id', selectedBackup.id);
-      toast.success('Backup deleted');
-      await fetchBackups();
-    } catch (error: any) {
-      console.error('Error deleting backup:', error);
-      toast.error('Failed to delete backup');
-    } finally {
-      setDeleting(null);
-      setSelectedBackup(null);
-    }
-  };
-
   const formatBytes = (bytes: number) => {
     if (!bytes) return '0 B';
     const k = 1024;
@@ -358,7 +363,7 @@ const BackupRestoreSettings = () => {
 
           {/* Scheduled Backup */}
           <Card>
-            <CardContent className="pt-5 pb-5">
+            <CardContent className="pt-5 pb-5 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <CalendarClock className="h-5 w-5 text-muted-foreground" />
@@ -368,30 +373,13 @@ const BackupRestoreSettings = () => {
                       {schedule.is_enabled && schedule.next_run_at
                         ? `Next: ${format(new Date(schedule.next_run_at), 'MMM d, HH:mm')}`
                         : 'Auto-backup on a schedule'}
+                      {schedule.is_enabled && schedule.last_run_at && (
+                        <> • Last: {format(new Date(schedule.last_run_at), 'MMM d, HH:mm')}</>
+                      )}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {schedule.is_enabled && (
-                    <Select
-                      value={schedule.time_of_day}
-                      onValueChange={(value) => {
-                        const newSchedule = { ...schedule, time_of_day: value };
-                        setSchedule(newSchedule);
-                        handleSaveSchedule(newSchedule);
-                      }}
-                    >
-                      <SelectTrigger className="w-[100px] h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="00:00">12:00 AM</SelectItem>
-                        <SelectItem value="06:00">6:00 AM</SelectItem>
-                        <SelectItem value="12:00">12:00 PM</SelectItem>
-                        <SelectItem value="18:00">6:00 PM</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
                   <Switch
                     checked={schedule.is_enabled}
                     onCheckedChange={(checked) => {
@@ -403,6 +391,81 @@ const BackupRestoreSettings = () => {
                   {savingSchedule && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                 </div>
               </div>
+
+              {schedule.is_enabled && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Frequency</Label>
+                    <Select
+                      value={schedule.frequency}
+                      onValueChange={(value) => {
+                        const newSchedule = { ...schedule, frequency: value };
+                        setSchedule(newSchedule);
+                        handleSaveSchedule(newSchedule);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="every_2_days">Every 2 Days</SelectItem>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Time</Label>
+                    <Select
+                      value={schedule.time_of_day}
+                      onValueChange={(value) => {
+                        const newSchedule = { ...schedule, time_of_day: value };
+                        setSchedule(newSchedule);
+                        handleSaveSchedule(newSchedule);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="00:00">12:00 AM</SelectItem>
+                        <SelectItem value="06:00">6:00 AM</SelectItem>
+                        <SelectItem value="12:00">12:00 PM</SelectItem>
+                        <SelectItem value="18:00">6:00 PM</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Scope</Label>
+                    <Select
+                      value={schedule.backup_scope === 'module' && schedule.backup_module
+                        ? `module:${schedule.backup_module}`
+                        : 'full'}
+                      onValueChange={(value) => {
+                        let newSchedule: BackupSchedule;
+                        if (value === 'full') {
+                          newSchedule = { ...schedule, backup_scope: 'full', backup_module: undefined };
+                        } else {
+                          const moduleName = value.replace('module:', '');
+                          newSchedule = { ...schedule, backup_scope: 'module', backup_module: moduleName };
+                        }
+                        setSchedule(newSchedule);
+                        handleSaveSchedule(newSchedule);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="full">Full System</SelectItem>
+                        {MODULES.map(m => (
+                          <SelectItem key={m.id} value={`module:${m.id}`}>{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -418,7 +481,7 @@ const BackupRestoreSettings = () => {
             </div>
           </CardHeader>
           <CardContent className="px-5 pb-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
               {MODULES.map((module) => {
                 const Icon = module.icon;
                 const isCreating = creatingModule === module.id;
@@ -454,7 +517,12 @@ const BackupRestoreSettings = () => {
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Clock className="h-4 w-4" /> Backup History
               </CardTitle>
-              <Badge variant="secondary" className="text-xs">{backups.length} / 30</Badge>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={fetchBackups}>
+                  <RefreshCw className="h-3 w-3 mr-1" /> Refresh
+                </Button>
+                <Badge variant="secondary" className="text-xs">{backups.length} / 30</Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="px-5 pb-4">
@@ -464,15 +532,16 @@ const BackupRestoreSettings = () => {
                 <p className="text-sm">No backups yet</p>
               </div>
             ) : (
-              <div className="overflow-auto max-h-[400px]">
+              <ScrollArea className="h-[400px]">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 z-10 bg-background">
                     <TableRow>
                       <TableHead className="text-xs w-[140px]">Type</TableHead>
                       <TableHead className="text-xs w-[150px]">Date</TableHead>
+                      <TableHead className="text-xs w-[80px]">Status</TableHead>
                       <TableHead className="text-xs w-[100px] text-right">Records</TableHead>
                       <TableHead className="text-xs w-[80px] text-right">Size</TableHead>
-                      <TableHead className="text-xs w-[160px] text-right">Actions</TableHead>
+                      <TableHead className="text-xs w-[100px] text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -486,6 +555,9 @@ const BackupRestoreSettings = () => {
                         </TableCell>
                         <TableCell className="py-2 text-muted-foreground">
                           {format(new Date(backup.created_at), 'dd MMM yyyy, HH:mm')}
+                        </TableCell>
+                        <TableCell className="py-2">
+                          {getStatusBadge(backup.status)}
                         </TableCell>
                         <TableCell className="py-2 text-right text-muted-foreground">
                           {backup.records_count?.toLocaleString() || 0}
@@ -514,25 +586,13 @@ const BackupRestoreSettings = () => {
                                 <RotateCcw className="h-3.5 w-3.5" />
                               )}
                             </Button>
-                            <Button
-                              variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteClick(backup)}
-                              disabled={deleting === backup.id}
-                              title="Delete"
-                            >
-                              {deleting === backup.id ? (
-                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
+              </ScrollArea>
             )}
           </CardContent>
         </Card>
@@ -578,28 +638,6 @@ const BackupRestoreSettings = () => {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Restore Backup
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Backup</AlertDialogTitle>
-            <AlertDialogDescription>
-              Delete "{selectedBackup ? getBackupLabel(selectedBackup) : ''}" from{' '}
-              {selectedBackup ? format(new Date(selectedBackup.created_at), 'dd MMM yyyy') : ''}? This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

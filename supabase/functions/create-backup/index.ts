@@ -9,16 +9,15 @@ const BACKUP_TABLES = [
   'leads', 'contacts', 'accounts', 'deals', 'action_items',
   'deal_action_items', 'lead_action_items', 'notifications',
   'notification_preferences', 'page_permissions', 'profiles',
-  'user_preferences', 'user_roles', 'user_sessions',
+  'user_preferences', 'user_roles',
   'saved_filters', 'column_preferences', 'dashboard_preferences',
-  'yearly_revenue_targets', 'keep_alive'
+  'yearly_revenue_targets',
 ]
 
 const MODULE_TABLES: Record<string, string[]> = {
-  leads: ['leads', 'lead_action_items'],
   contacts: ['contacts'],
   accounts: ['accounts'],
-  deals: ['deals', 'deal_action_items'],
+  deals: ['deals', 'deal_action_items', 'leads', 'lead_action_items'],
   action_items: ['action_items'],
   notifications: ['notifications', 'notification_preferences'],
 }

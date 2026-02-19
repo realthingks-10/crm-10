@@ -130,6 +130,8 @@ export type Database = {
       }
       backup_schedules: {
         Row: {
+          backup_module: string | null
+          backup_scope: string
           created_at: string
           created_by: string | null
           frequency: string
@@ -141,6 +143,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          backup_module?: string | null
+          backup_scope?: string
           created_at?: string
           created_by?: string | null
           frequency?: string
@@ -152,6 +156,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          backup_module?: string | null
+          backup_scope?: string
           created_at?: string
           created_by?: string | null
           frequency?: string

@@ -21,10 +21,6 @@ export function useModuleRecords(moduleType: ModuleType | null) {
           query = supabase.from('deals').select('id, deal_name').order('deal_name');
           nameField = 'deal_name';
           break;
-        case 'leads':
-          query = supabase.from('leads').select('id, lead_name').order('lead_name');
-          nameField = 'lead_name';
-          break;
         case 'contacts':
           query = supabase.from('contacts').select('id, contact_name').order('contact_name');
           nameField = 'contact_name';
@@ -62,10 +58,6 @@ export function useModuleRecordName(moduleType: string | null, moduleId: string 
           query = supabase.from('deals').select('deal_name').eq('id', moduleId).single();
           nameField = 'deal_name';
           break;
-        case 'leads':
-          query = supabase.from('leads').select('lead_name').eq('id', moduleId).single();
-          nameField = 'lead_name';
-          break;
         case 'contacts':
           query = supabase.from('contacts').select('contact_name').eq('id', moduleId).single();
           nameField = 'contact_name';
@@ -94,7 +86,6 @@ export function useModuleRecordNames(items: Array<{ module_type: string; module_
       
       // Group items by module type
       const dealIds = items.filter(i => i.module_type === 'deals' && i.module_id).map(i => i.module_id!);
-      const leadIds = items.filter(i => i.module_type === 'leads' && i.module_id).map(i => i.module_id!);
       const contactIds = items.filter(i => i.module_type === 'contacts' && i.module_id).map(i => i.module_id!);
 
       // Fetch all at once
@@ -106,17 +97,6 @@ export function useModuleRecordNames(items: Array<{ module_type: string; module_
             .then(({ data }) => {
               (data || []).forEach((d: any) => {
                 names[`deals:${d.id}`] = d.deal_name;
-              });
-            })
-        );
-      }
-
-      if (leadIds.length > 0) {
-        promises.push(
-          supabase.from('leads').select('id, lead_name').in('id', leadIds)
-            .then(({ data }) => {
-              (data || []).forEach((l: any) => {
-                names[`leads:${l.id}`] = l.lead_name;
               });
             })
         );

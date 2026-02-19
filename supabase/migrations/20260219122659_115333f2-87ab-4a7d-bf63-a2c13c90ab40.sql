@@ -1,0 +1,1 @@
+DELETE FROM page_permissions WHERE route = '/leads';

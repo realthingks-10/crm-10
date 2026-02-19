@@ -3,14 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Deal } from "@/types/deal";
 import { FormFieldRenderer } from "./FormFieldRenderer";
 
+import { ContactForDropdown } from "@/components/ContactSearchableDropdown";
+
 interface LeadStageFormProps {
   formData: Partial<Deal>;
   onFieldChange: (field: string, value: any) => void;
-  onLeadSelect?: (lead: any) => void;
+  onContactSelect?: (contact: ContactForDropdown) => void;
   fieldErrors: Record<string, string>;
 }
 
-export const LeadStageForm = ({ formData, onFieldChange, onLeadSelect, fieldErrors }: LeadStageFormProps) => {
+export const LeadStageForm = ({ formData, onFieldChange, onContactSelect, fieldErrors }: LeadStageFormProps) => {
   const fields = ['project_name', 'lead_name', 'customer_name', 'region', 'lead_owner', 'priority'];
 
   return (
@@ -26,7 +28,7 @@ export const LeadStageForm = ({ formData, onFieldChange, onLeadSelect, fieldErro
               field={field}
               value={formData[field as keyof Deal]}
               onChange={onFieldChange}
-              onLeadSelect={onLeadSelect}
+              onContactSelect={onContactSelect}
               error={fieldErrors[field]}
             />
           ))}

@@ -14,7 +14,6 @@ import { useAllUsers } from '@/hooks/useUserDisplayNames';
 import { useModuleRecordNames } from '@/hooks/useModuleRecords';
 import { ActionItem, ActionItemStatus, ActionItemPriority } from '@/hooks/useActionItems';
 import { DealForm } from './DealForm';
-import { LeadModal } from './LeadModal';
 import { ContactModal } from './ContactModal';
 import { supabase } from '@/integrations/supabase/client';
 import { Deal } from '@/types/deal';
@@ -99,10 +98,8 @@ export function ActionItemsTable({
 
   // Modal state for viewing linked records
   const [dealModalOpen, setDealModalOpen] = useState(false);
-  const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
-  const [selectedLead, setSelectedLead] = useState<any>(null);
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const allSelected = actionItems.length > 0 && selectedIds.length === actionItems.length;
   const someSelected = selectedIds.length > 0 && selectedIds.length < actionItems.length;
@@ -186,16 +183,6 @@ export function ActionItemsTable({
         if (data) {
           setSelectedDeal(data as Deal);
           setDealModalOpen(true);
-        }
-      } else if (normalizedType === 'lead' || normalizedType === 'leads') {
-        const { data } = await supabase
-          .from('leads')
-          .select('*')
-          .eq('id', moduleId)
-          .maybeSingle();
-        if (data) {
-          setSelectedLead(data);
-          setLeadModalOpen(true);
         }
       } else if (normalizedType === 'contact' || normalizedType === 'contacts') {
         const { data } = await supabase
@@ -520,17 +507,6 @@ export function ActionItemsTable({
         }}
         onSave={handleDealSave}
         isCreating={false}
-      />
-
-      {/* Lead Modal */}
-      <LeadModal
-        open={leadModalOpen}
-        onOpenChange={(open) => {
-          setLeadModalOpen(open);
-          if (!open) setSelectedLead(null);
-        }}
-        lead={selectedLead}
-        onSuccess={() => setLeadModalOpen(false)}
       />
 
       {/* Contact Modal */}

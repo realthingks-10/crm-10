@@ -6,11 +6,12 @@ import { QualifiedStageForm } from "./QualifiedStageForm";
 import { RFQStageForm } from "./RFQStageForm";
 import { OfferedStageForm } from "./OfferedStageForm";
 import { FinalStageForm } from "./FinalStageForm";
+import { ContactForDropdown } from "@/components/ContactSearchableDropdown";
 
 interface DealStageFormProps {
   formData: Partial<Deal>;
   onFieldChange: (field: string, value: any) => void;
-  onLeadSelect?: (lead: any) => void;
+  onContactSelect?: (contact: ContactForDropdown) => void;
   fieldErrors: Record<string, string>;
   stage: DealStage;
   showPreviousStages: boolean;
@@ -19,7 +20,7 @@ interface DealStageFormProps {
 export const DealStageForm = ({ 
   formData, 
   onFieldChange, 
-  onLeadSelect, 
+  onContactSelect, 
   fieldErrors, 
   stage, 
   showPreviousStages 
@@ -39,7 +40,7 @@ export const DealStageForm = ({
           <LeadStageForm
             formData={formData}
             onFieldChange={onFieldChange}
-            onLeadSelect={onLeadSelect}
+            onContactSelect={onContactSelect}
             fieldErrors={fieldErrors}
           />
         );

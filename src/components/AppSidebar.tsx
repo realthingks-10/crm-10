@@ -1,7 +1,6 @@
 import { 
   Home, 
   Users, 
-  UserPlus, 
   BarChart3, 
   Settings,
   LogOut,
@@ -34,7 +33,6 @@ const menuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Accounts", url: "/accounts", icon: Building2 },
   { title: "Contacts", url: "/contacts", icon: Users },
-  { title: "Leads", url: "/leads", icon: UserPlus },
   { title: "Deals", url: "/deals", icon: BarChart3 },
   { title: "Action Items", url: "/action-items", icon: CheckSquare },
 ];

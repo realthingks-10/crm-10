@@ -14,13 +14,10 @@ export const useSecureDataAccess = () => {
     operation: string = 'SELECT'
   ) => {
     try {
-      // Log the data access attempt
-      await logDataAccess(tableName, operation);
-
       const result = await query;
 
       if (result.error) {
-        // Log failed access attempts
+        // Log failed access attempts — these ARE meaningful
         await logSecurityEvent('DATA_ACCESS_FAILED', tableName, undefined, {
           error: result.error.message,
           operation
@@ -28,20 +25,12 @@ export const useSecureDataAccess = () => {
         throw result.error;
       }
 
-      // Log successful sensitive data access
-      if (['deals', 'contacts', 'leads'].includes(tableName.toLowerCase())) {
-        await logSecurityEvent('SENSITIVE_DATA_ACCESS', tableName, undefined, {
-          operation,
-          record_count: result.data?.length || 1
-        });
-      }
-
       return result;
     } catch (error) {
       console.error(`Secure ${operation} failed for ${tableName}:`, error);
       throw error;
     }
-  }, [logDataAccess, logSecurityEvent]);
+  }, [logSecurityEvent]);
 
   const secureExport = useCallback(async (
     tableName: string,

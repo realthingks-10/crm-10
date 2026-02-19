@@ -9,56 +9,24 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Deal } from "@/types/deal";
-import { LeadSearchableDropdown } from "@/components/LeadSearchableDropdown";
+import { ContactSearchableDropdown, ContactForDropdown } from "@/components/ContactSearchableDropdown";
 import { AccountSearchableDropdown } from "@/components/AccountSearchableDropdown";
-import { supabase } from "@/integrations/supabase/client";
-import { useState, useEffect } from "react";
-import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 
 interface FormFieldRendererProps {
   field: string;
   value: any;
   onChange: (field: string, value: any) => void;
-  onLeadSelect?: (lead: any) => void;
+  onContactSelect?: (contact: ContactForDropdown) => void;
   error?: string;
 }
 
-export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error }: FormFieldRendererProps) => {
-  const [leadOwnerIds, setLeadOwnerIds] = useState<string[]>([]);
-  const { displayNames, loading } = useUserDisplayNames(leadOwnerIds);
-
-  useEffect(() => {
-    if (field === 'lead_owner') {
-      fetchLeadOwners();
-    }
-  }, [field]);
-
-  const fetchLeadOwners = async () => {
-    try {
-      // Fetch all unique lead owners (created_by) from leads table
-      const { data: leads, error } = await supabase
-        .from('leads')
-        .select('created_by')
-        .not('created_by', 'is', null);
-
-      if (error) {
-        console.error('Error fetching lead owners:', error);
-        return;
-      }
-
-      // Get unique user IDs
-      const uniqueUserIds = Array.from(new Set(leads.map(lead => lead.created_by).filter(Boolean)));
-      setLeadOwnerIds(uniqueUserIds);
-    } catch (error) {
-      console.error('Error in fetchLeadOwners:', error);
-    }
-  };
+export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, error }: FormFieldRendererProps) => {
 
   const getFieldLabel = (field: string) => {
     const labels: Record<string, string> = {
       project_name: 'Project Name',
       customer_name: 'Account',
-      lead_name: 'Lead Name',
+      lead_name: 'Contact Name',
       lead_owner: 'Lead Owner',
       region: 'Region',
       priority: 'Priority',
@@ -109,108 +77,30 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
   };
 
   const handleNumericChange = (fieldName: string, inputValue: string) => {
-    console.log(`=== NUMERIC FIELD CHANGE DEBUG ===`);
-    console.log(`Field: ${fieldName}, Input value: "${inputValue}"`);
-    
     if (inputValue === '' || inputValue === null || inputValue === undefined) {
-      console.log(`Setting ${fieldName} to 0 (empty input)`);
       onChange(fieldName, 0);
       return;
     }
-    
     const numericValue = parseFloat(inputValue);
     if (isNaN(numericValue)) {
-      console.log(`Invalid numeric value for ${fieldName}: "${inputValue}"`);
       onChange(fieldName, 0);
       return;
     }
-    
-    // For revenue fields, ensure positive values
     if (fieldName.includes('revenue') && numericValue < 0) {
-      console.log(`Setting ${fieldName} to 0 (negative value not allowed)`);
       onChange(fieldName, 0);
       return;
     }
-    
-    console.log(`Setting ${fieldName} to ${numericValue}`);
     onChange(fieldName, numericValue);
   };
 
-  const handleLeadSelect = async (lead: any) => {
-    console.log("Selected lead:", lead);
-    
-    // Auto-fill available fields based on lead data
-    const updates: Partial<Deal> = {
-      lead_name: lead.lead_name,
-      customer_name: lead.company_name || '',
-      region: lead.country || '',
-    };
+  const handleContactSelected = (contact: ContactForDropdown) => {
+    // Auto-fill related fields from selected contact
+    onChange('lead_name', contact.contact_name);
+    if (contact.company_name) onChange('customer_name', contact.company_name);
+    if (contact.region) onChange('region', contact.region);
 
-    // Update each field individually
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value) {
-        onChange(key, value);
-      }
-    });
-
-    // Handle lead owner - fetch display name for the lead's creator
-    if (lead.created_by) {
-      console.log("Fetching display name for lead owner:", lead.created_by);
-      
-      try {
-        // Call the edge function to get the display name
-        const { data: functionResult, error: functionError } = await supabase.functions.invoke(
-          'fetch-user-display-names',
-          {
-            body: { userIds: [lead.created_by] }
-          }
-        );
-
-        if (!functionError && functionResult?.userDisplayNames) {
-          const leadOwnerName = functionResult.userDisplayNames[lead.created_by];
-          if (leadOwnerName) {
-            console.log("Setting lead owner to:", leadOwnerName);
-            onChange('lead_owner', leadOwnerName);
-          } else {
-            onChange('lead_owner', 'Unknown User');
-          }
-        } else {
-          console.log("Edge function failed, trying direct query fallback");
-          
-          // Fallback to direct query
-          const { data: profilesData, error: profilesError } = await supabase
-            .from('profiles')
-            .select('id, full_name, "Email ID"')
-            .eq('id', lead.created_by)
-            .single();
-
-          if (!profilesError && profilesData) {
-            let displayName = "Unknown User";
-            
-            if (profilesData.full_name?.trim() && 
-                !profilesData.full_name.includes('@') &&
-                profilesData.full_name !== profilesData["Email ID"]) {
-              displayName = profilesData.full_name.trim();
-            } else if (profilesData["Email ID"]) {
-              displayName = profilesData["Email ID"].split('@')[0];
-            }
-            
-            console.log("Setting lead owner from profiles:", displayName);
-            onChange('lead_owner', displayName);
-          } else {
-            onChange('lead_owner', 'Unknown User');
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching lead owner display name:", error);
-        onChange('lead_owner', 'Unknown User');
-      }
-    } else {
-      onChange('lead_owner', 'Unknown User');
-    }
-
-    if (onLeadSelect) {
-      onLeadSelect(lead);
+    if (onContactSelect) {
+      onContactSelect(contact);
     }
   };
 
@@ -238,13 +128,12 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             onSelect={(selectedDate) => {
               if (selectedDate) {
                 const formattedDate = format(selectedDate, "yyyy-MM-dd");
-                console.log(`Date field ${fieldName} update: setting to ${formattedDate}`);
                 onChange(fieldName, formattedDate);
               } else {
                 onChange(fieldName, '');
               }
             }}
-            disabled={(date) => date > new Date()} // Disable future dates
+            disabled={(date) => date > new Date()}
             initialFocus
             className={cn("p-3 pointer-events-auto")}
           />
@@ -257,11 +146,11 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
     switch (field) {
       case 'lead_name':
         return (
-          <LeadSearchableDropdown
+          <ContactSearchableDropdown
             value={getStringValue(value)}
             onValueChange={(val) => onChange(field, val)}
-            onLeadSelect={handleLeadSelect}
-            placeholder="Search and select a lead..."
+            onContactSelect={handleContactSelected}
+            placeholder="Search and select a contact..."
           />
         );
 
@@ -306,10 +195,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
         return (
           <Select
             value={value ? value.toString() : ''}
-            onValueChange={(val) => {
-              console.log(`Probability update: setting to ${val}`);
-              onChange(field, parseInt(val));
-            }}
+            onValueChange={(val) => onChange(field, parseInt(val))}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select probability" />
@@ -368,10 +254,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
         return (
           <Select
             value={value?.toString() || ''}
-            onValueChange={(val) => {
-              console.log(`${field} update: setting to ${val}`);
-              onChange(field, val);
-            }}
+            onValueChange={(val) => onChange(field, val)}
           >
             <SelectTrigger>
               <SelectValue placeholder={`Select ${getFieldLabel(field).toLowerCase()}`} />
@@ -412,10 +295,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             step="0.01"
             min="0"
             value={getStringValue(value)}
-            onChange={(e) => {
-              console.log(`Budget update: setting to ${e.target.value}`);
-              handleNumericChange(field, e.target.value);
-            }}
+            onChange={(e) => handleNumericChange(field, e.target.value)}
             placeholder="Enter budget in euros..."
           />
         );
@@ -424,10 +304,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
         return (
           <Select
             value={value?.toString() || ''}
-            onValueChange={(val) => {
-              console.log(`Is recurring update: setting to ${val}`);
-              onChange(field, val);
-            }}
+            onValueChange={(val) => onChange(field, val)}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select recurring status" />
@@ -488,10 +365,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
         return (
           <Select
             value={value?.toString() || ''}
-            onValueChange={(val) => {
-              console.log(`Handoff status update: setting to ${val}`);
-              onChange(field, val);
-            }}
+            onValueChange={(val) => onChange(field, val)}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select handoff status" />
@@ -519,10 +393,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
           <Input
             type="date"
             value={getStringValue(value)}
-            onChange={(e) => {
-              console.log(`Date field ${field} update: setting to ${e.target.value}`);
-              onChange(field, e.target.value);
-            }}
+            onChange={(e) => onChange(field, e.target.value)}
           />
         );
 
@@ -534,10 +405,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             step="0.01"
             min="0"
             value={getStringValue(value)}
-            onChange={(e) => {
-              console.log(`RFQ numeric field ${field} update: setting to ${e.target.value}`);
-              handleNumericChange(field, e.target.value);
-            }}
+            onChange={(e) => handleNumericChange(field, e.target.value)}
             placeholder={field === 'project_duration' ? 'Enter duration in months...' : 'Enter value...'}
           />
         );
@@ -552,10 +420,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             step="0.01"
             min="0"
             value={getStringValue(value)}
-            onChange={(e) => {
-              console.log(`Revenue field ${field} update: setting to ${e.target.value}`);
-              handleNumericChange(field, e.target.value);
-            }}
+            onChange={(e) => handleNumericChange(field, e.target.value)}
             placeholder="Enter quarterly revenue..."
           />
         );
@@ -567,10 +432,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
             step="0.01"
             min="0"
             value={getStringValue(value)}
-            onChange={(e) => {
-              console.log(`Total revenue field ${field} update: setting to ${e.target.value}`);
-              handleNumericChange(field, e.target.value);
-            }}
+            onChange={(e) => handleNumericChange(field, e.target.value)}
             placeholder="Enter total revenue..."
           />
         );
@@ -595,10 +457,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onLeadSelect, error 
         return (
           <Textarea
             value={getStringValue(value)}
-            onChange={(e) => {
-              console.log(`Textarea field ${field} update: setting to ${e.target.value}`);
-              onChange(field, e.target.value);
-            }}
+            onChange={(e) => onChange(field, e.target.value)}
             rows={3}
             placeholder={`Enter ${getFieldLabel(field).toLowerCase()}...`}
           />

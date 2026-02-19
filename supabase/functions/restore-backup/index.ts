@@ -6,23 +6,27 @@ const corsHeaders = {
 }
 
 // Tables in correct deletion order (children first, parents last)
+// NOTE: security_audit_log, user_sessions, keep_alive are intentionally excluded:
+//   - security_audit_log: restoring noise rows would bloat the log; active events should not be wiped
+//   - user_sessions: deleting would sign out all active users mid-restore
+//   - keep_alive: infrastructure table, not business data
 const DELETE_ORDER = [
   'deal_action_items', 'lead_action_items', 'action_items',
   'notifications', 'notification_preferences', 'saved_filters',
-  'column_preferences', 'dashboard_preferences', 'user_sessions',
+  'column_preferences', 'dashboard_preferences',
   'deals', 'contacts', 'leads', 'accounts',
   'user_preferences', 'yearly_revenue_targets', 'page_permissions',
-  'keep_alive'
+  'profiles', 'user_roles'
 ]
 
 // Tables in correct insertion order (parents first, children last)
 const INSERT_ORDER = [
+  'profiles', 'user_roles',
   'accounts', 'leads', 'contacts', 'deals',
   'lead_action_items', 'deal_action_items', 'action_items',
   'notifications', 'notification_preferences', 'saved_filters',
-  'column_preferences', 'dashboard_preferences', 'user_sessions',
+  'column_preferences', 'dashboard_preferences',
   'user_preferences', 'yearly_revenue_targets', 'page_permissions',
-  'keep_alive'
 ]
 
 const BATCH_SIZE = 1000
