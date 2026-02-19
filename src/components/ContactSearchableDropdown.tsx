@@ -115,14 +115,14 @@ export const ContactSearchableDropdown = ({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[9999]" align="start" onWheel={(e) => e.stopPropagation()} onOpenAutoFocus={(e) => e.preventDefault()}>
         <Command shouldFilter={false} filter={() => 1}>
           <CommandInput
             placeholder="Search contacts..."
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandList>
+          <CommandList className="max-h-[280px] overflow-y-auto" onWheel={(e) => e.stopPropagation()}>
             {loading ? (
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="h-4 w-4 animate-spin" />
