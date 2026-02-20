@@ -678,7 +678,7 @@ export const DealExpandedPanel = ({ deal, onClose, onOpenActionItemModal, addDet
 
                         {/* Task */}
                         <TableCell className="py-1.5 px-2">
-                          <button onClick={(e) => {e.stopPropagation();handleActionItemClick(item);}} className="hover:underline text-left whitespace-normal break-words text-[#2e538e] font-normal text-xs">
+                          <button onClick={(e) => {e.stopPropagation();handleActionItemClick(item);}} className="hover:underline text-left whitespace-normal break-words text-[#2e538e] font-normal text-sm">
                             {item.title}
                           </button>
                         </TableCell>
