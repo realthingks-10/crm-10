@@ -584,7 +584,7 @@ export const DealExpandedPanel = ({ deal, onClose, onOpenActionItemModal, addDet
                           {entry.originalLog ?
                       <button
                         onClick={() => setDetailLogId(entry.originalLog!.id)}
-                        className="hover:underline text-left whitespace-normal break-words text-[#2e538e] font-normal text-xs">
+                        className="hover:underline text-left whitespace-normal break-words text-[#2e538e] font-normal text-sm">
 
                               {entry.message}
                             </button> :
