@@ -279,10 +279,11 @@ const ProfileSection = ({ profile, setProfile, userId, displayPrefs, setDisplayP
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="dashboard">Dashboard</SelectItem>
+                  <SelectItem value="leads">Leads</SelectItem>
                   <SelectItem value="deals">Deals</SelectItem>
                   <SelectItem value="contacts">Contacts</SelectItem>
                   <SelectItem value="accounts">Accounts</SelectItem>
-                  <SelectItem value="tasks">Tasks</SelectItem>
+                  <SelectItem value="tasks">Action Items</SelectItem>
                 </SelectContent>
               </Select>
             </div>

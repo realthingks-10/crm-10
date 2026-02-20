@@ -11,7 +11,7 @@ const BACKUP_TABLES = [
   'notification_preferences', 'page_permissions', 'profiles',
   'user_preferences', 'user_roles',
   'saved_filters', 'column_preferences', 'dashboard_preferences',
-  'yearly_revenue_targets',
+  'yearly_revenue_targets'
 ]
 
 const MODULE_TABLES: Record<string, string[]> = {
@@ -22,14 +22,14 @@ const MODULE_TABLES: Record<string, string[]> = {
   notifications: ['notifications', 'notification_preferences'],
 }
 
-const FREQUENCY_DAYS: Record<string, number> = {
-  daily: 1,
-  every_2_days: 2,
-  weekly: 7,
-}
-
-const BATCH_SIZE = 1000
 const MAX_BACKUPS = 30
+const BATCH_SIZE = 1000
+
+const FREQUENCY_HOURS: Record<string, number> = {
+  daily: 24,
+  every_2_days: 48,
+  weekly: 168,
+}
 
 async function fetchAllRows(client: any, table: string): Promise<any[]> {
   const allData: any[] = []
@@ -45,11 +45,11 @@ async function fetchAllRows(client: any, table: string): Promise<any[]> {
 }
 
 function computeNextRun(frequency: string, timeOfDay: string): string {
-  const days = FREQUENCY_DAYS[frequency] || 2
-  const [hours, minutes] = timeOfDay.split(':').map(Number)
+  const hours = FREQUENCY_HOURS[frequency] || 48
+  const [h, m] = timeOfDay.split(':').map(Number)
   const next = new Date()
-  next.setDate(next.getDate() + days)
-  next.setHours(hours, minutes, 0, 0)
+  next.setTime(next.getTime() + hours * 60 * 60 * 1000)
+  next.setHours(h, m, 0, 0)
   return next.toISOString()
 }
 
@@ -63,40 +63,60 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const adminClient = createClient(supabaseUrl, serviceRoleKey)
 
-    // Fetch due schedules
+    // Find enabled schedules that are due
     const { data: schedules, error: schedError } = await adminClient
       .from('backup_schedules')
       .select('*')
       .eq('is_enabled', true)
       .lte('next_run_at', new Date().toISOString())
 
-    if (schedError) {
-      console.error('Error fetching schedules:', schedError)
-      return new Response(JSON.stringify({ error: schedError.message }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
+    if (schedError) throw schedError
     if (!schedules || schedules.length === 0) {
-      return new Response(JSON.stringify({ message: 'No scheduled backups due', processed: 0 }), {
+      return new Response(JSON.stringify({ message: 'No scheduled backups due' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
     const results: any[] = []
 
-    for (const schedule of schedules) {
+    for (const sched of schedules) {
       try {
-        const backupScope = schedule.backup_scope || 'full'
-        const backupModule = schedule.backup_module || null
-
-        // Determine tables
+        // Determine tables to backup based on scope
         let tablesToBackup = BACKUP_TABLES
-        if (backupScope === 'module' && backupModule && MODULE_TABLES[backupModule]) {
-          tablesToBackup = MODULE_TABLES[backupModule]
+        let moduleName: string | null = null
+
+        if (sched.backup_scope === 'module' && sched.backup_module && MODULE_TABLES[sched.backup_module]) {
+          tablesToBackup = MODULE_TABLES[sched.backup_module]
+          moduleName = sched.backup_module
         }
 
-        // Fetch data
+        const createdBy = sched.created_by
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+        const fileName = moduleName
+          ? `scheduled-${moduleName}-${timestamp}.json`
+          : `scheduled-full-${timestamp}.json`
+        const filePath = `${createdBy}/${fileName}`
+
+        // Create backup metadata
+        const { data: backupRecord, error: insertErr } = await adminClient
+          .from('backups')
+          .insert({
+            file_name: fileName,
+            file_path: filePath,
+            backup_type: 'scheduled',
+            module_name: moduleName,
+            status: 'in_progress',
+            created_by: createdBy,
+          })
+          .select()
+          .single()
+
+        if (insertErr) {
+          console.error('Failed to create backup record:', insertErr)
+          continue
+        }
+
+        // Export data
         const backupData: Record<string, any[]> = {}
         const manifest: Record<string, number> = {}
         let totalRecords = 0
@@ -108,19 +128,12 @@ Deno.serve(async (req) => {
           totalRecords += data.length
         }
 
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-        const fileName = backupModule
-          ? `scheduled-${backupModule}-${timestamp}.json`
-          : `scheduled-full-${timestamp}.json`
-        const createdBy = schedule.created_by || '00000000-0000-0000-0000-000000000000'
-        const filePath = `${createdBy}/${fileName}`
-
         const backupJson = JSON.stringify({
           version: '1.0',
           created_at: new Date().toISOString(),
           created_by: createdBy,
           backup_type: 'scheduled',
-          module_name: backupModule,
+          module_name: moduleName,
           tables: tablesToBackup,
           manifest,
           data: backupData,
@@ -129,57 +142,59 @@ Deno.serve(async (req) => {
         const sizeBytes = new Blob([backupJson]).size
 
         // Upload
-        const { error: uploadError } = await adminClient.storage
+        const { error: uploadErr } = await adminClient.storage
           .from('backups')
           .upload(filePath, backupJson, { contentType: 'application/json', upsert: true })
 
-        const status = uploadError ? 'failed' : 'completed'
+        if (uploadErr) {
+          await adminClient.from('backups').update({ status: 'failed' }).eq('id', backupRecord.id)
+          console.error('Upload failed:', uploadErr)
+          continue
+        }
 
-        // Insert backup record
-        await adminClient.from('backups').insert({
-          file_name: fileName,
-          file_path: filePath,
-          backup_type: 'scheduled',
-          module_name: backupModule,
-          status,
-          created_by: createdBy,
+        // Update metadata
+        await adminClient.from('backups').update({
+          status: 'completed',
           size_bytes: sizeBytes,
           tables_count: tablesToBackup.length,
           records_count: totalRecords,
           manifest,
-        })
+        }).eq('id', backupRecord.id)
 
-        // Update schedule
-        const nextRunAt = computeNextRun(schedule.frequency, schedule.time_of_day)
-        await adminClient.from('backup_schedules').update({
-          last_run_at: new Date().toISOString(),
-          next_run_at: nextRunAt,
-        }).eq('id', schedule.id)
+        // Update schedule timing
+        const nextRunAt = computeNextRun(sched.frequency, sched.time_of_day)
+        await adminClient
+          .from('backup_schedules')
+          .update({
+            last_run_at: new Date().toISOString(),
+            next_run_at: nextRunAt,
+          })
+          .eq('id', sched.id)
 
-        results.push({ scheduleId: schedule.id, status, records: totalRecords })
+        results.push({ scheduleId: sched.id, backupId: backupRecord.id, records: totalRecords })
         console.log(`Scheduled backup completed: ${fileName} (${totalRecords} records)`)
-
-        // Enforce max backups
-        const { data: allBackups } = await adminClient
-          .from('backups')
-          .select('id, file_path')
-          .eq('status', 'completed')
-          .order('created_at', { ascending: true })
-
-        if (allBackups && allBackups.length > MAX_BACKUPS) {
-          const toDelete = allBackups.slice(0, allBackups.length - MAX_BACKUPS)
-          for (const old of toDelete) {
-            await adminClient.storage.from('backups').remove([old.file_path])
-            await adminClient.from('backups').delete().eq('id', old.id)
-          }
-        }
       } catch (err: any) {
-        console.error(`Error processing schedule ${schedule.id}:`, err)
-        results.push({ scheduleId: schedule.id, status: 'failed', error: err.message })
+        console.error(`Error processing schedule ${sched.id}:`, err)
+        results.push({ scheduleId: sched.id, error: err.message })
       }
     }
 
-    return new Response(JSON.stringify({ processed: results.length, results }), {
+    // Enforce max backups limit
+    const { data: allBackups } = await adminClient
+      .from('backups')
+      .select('id, file_path')
+      .eq('status', 'completed')
+      .order('created_at', { ascending: true })
+
+    if (allBackups && allBackups.length > MAX_BACKUPS) {
+      const toDelete = allBackups.slice(0, allBackups.length - MAX_BACKUPS)
+      for (const old of toDelete) {
+        await adminClient.storage.from('backups').remove([old.file_path])
+        await adminClient.from('backups').delete().eq('id', old.id)
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true, results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 

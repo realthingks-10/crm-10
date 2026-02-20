@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 export type ActionItemPriority = 'Low' | 'Medium' | 'High';
 export type ActionItemStatus = 'Open' | 'In Progress' | 'Completed' | 'Cancelled';
-export type ModuleType = 'deals' | 'contacts';
+export type ModuleType = 'deals' | 'leads' | 'contacts';
 
 export interface ActionItem {
   id: string;

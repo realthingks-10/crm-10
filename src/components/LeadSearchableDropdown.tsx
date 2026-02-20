@@ -51,23 +51,14 @@ export const LeadSearchableDropdown = ({
   const fetchLeads = async () => {
     try {
       setLoading(true);
-      const PAGE_SIZE = 1000;
-      let allData: Lead[] = [];
-      let from = 0;
-      let hasMore = true;
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('leads')
-          .select('id, lead_name, company_name, country, created_by, lead_status')
-          .neq('lead_status', 'Converted')
-          .order('lead_name', { ascending: true })
-          .range(from, from + PAGE_SIZE - 1);
-        if (error) throw error;
-        allData = [...allData, ...(data || [])];
-        hasMore = (data?.length || 0) === PAGE_SIZE;
-        from += PAGE_SIZE;
-      }
-      setLeads(allData);
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, lead_name, company_name, country, created_by, lead_status')
+        .neq('lead_status', 'Converted') // Only show leads that haven't been converted to deals yet
+        .order('lead_name', { ascending: true });
+
+      if (error) throw error;
+      setLeads(data || []);
     } catch (error) {
       console.error("Error fetching leads:", error);
       toast({
@@ -120,14 +111,20 @@ export const LeadSearchableDropdown = ({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start">
-        <Command shouldFilter={false} filter={() => 1}>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" style={{ pointerEvents: 'auto' }}>
+        <Command shouldFilter={false}>
           <CommandInput 
             placeholder="Search leads..." 
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandList>
+          <CommandList
+            onWheel={(e) => {
+              e.stopPropagation();
+              const target = e.currentTarget;
+              target.scrollTop += e.deltaY;
+            }}
+          >
             {loading ? (
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -135,7 +132,9 @@ export const LeadSearchableDropdown = ({
               </div>
             ) : (
               <>
-                <CommandEmpty>No leads found.</CommandEmpty>
+                {filteredLeads.length === 0 && !loading && (
+                  <div className="py-6 text-center text-sm text-muted-foreground">No leads found.</div>
+                )}
                 <CommandGroup>
                   {filteredLeads.map((lead) => (
                     <CommandItem

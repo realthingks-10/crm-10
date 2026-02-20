@@ -1,8 +1,8 @@
 
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSecurityAudit } from '@/hooks/useSecurityAudit';
-import { supabase } from '@/integrations/supabase/client';
+import { usePermissions } from '@/contexts/PermissionsContext';
 
 interface SecurityContextType {
   isSecurityEnabled: boolean;
@@ -27,71 +27,20 @@ interface SecurityProviderProps {
 export const SecurityProvider = ({ children }: SecurityProviderProps) => {
   const { user } = useAuth();
   const { logSecurityEvent } = useSecurityAudit();
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const { userRole, isAdmin } = usePermissions();
+  
+  // Ref to prevent duplicate session logging
+  const sessionLoggedRef = useRef<string | null>(null);
 
-  const hasAdminAccess = userRole === 'admin';
-
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      if (!user) {
-        setUserRole(null);
-        return;
-      }
-
-      try {
-        // Check user metadata first for role
-        const metadataRole = user.user_metadata?.role;
-        if (metadataRole) {
-          setUserRole(metadataRole);
-          console.log('User role from metadata:', metadataRole);
-          return;
-        }
-
-        // Fallback to database lookup
-        const { data, error } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .single();
-
-        if (error && error.code !== 'PGRST116') { // PGRST116 means no rows returned
-          console.error('Error fetching user role:', error);
-          setUserRole('user'); // Default fallback
-          return;
-        }
-
-        const role = data?.role || 'user';
-        setUserRole(role);
-        console.log('User role from database:', role);
-      } catch (error) {
-        console.error('Failed to fetch user role:', error);
-        setUserRole('user');
-      }
-    };
-
-    fetchUserRole();
-  }, [user]);
-
-  // Ref to prevent duplicate session logging per user+role combination
-  const sessionLoggedRef = React.useRef<string | null>(null);
-  // Ref to track the previous user id so we can log SESSION_END only on actual sign-out
-  const prevUserIdRef = useRef<string | null>(null);
+  const hasAdminAccess = isAdmin;
 
   useEffect(() => {
     if (!user || !userRole) {
-      // User just signed out — log SESSION_END once
-      if (prevUserIdRef.current) {
-        logSecurityEvent('SESSION_END', 'auth', prevUserIdRef.current);
-        prevUserIdRef.current = null;
-      }
       sessionLoggedRef.current = null;
       return;
     }
 
-    // Track current user id for sign-out detection
-    prevUserIdRef.current = user.id;
-
-    // Only log SESSION_START once per unique user+role session
+    // Only log session start once per user session
     const sessionKey = `${user.id}-${userRole}`;
     if (sessionLoggedRef.current !== sessionKey) {
       sessionLoggedRef.current = sessionKey;

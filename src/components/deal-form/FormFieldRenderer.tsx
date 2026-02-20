@@ -9,18 +9,51 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Deal } from "@/types/deal";
-import { ContactSearchableDropdown, ContactForDropdown } from "@/components/ContactSearchableDropdown";
+import { ContactSearchableDropdown, Contact } from "@/components/ContactSearchableDropdown";
 import { AccountSearchableDropdown } from "@/components/AccountSearchableDropdown";
+import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
+import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 
 interface FormFieldRendererProps {
   field: string;
   value: any;
   onChange: (field: string, value: any) => void;
-  onContactSelect?: (contact: ContactForDropdown) => void;
+  onContactSelect?: (contact: Contact) => void;
   error?: string;
 }
 
 export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, error }: FormFieldRendererProps) => {
+  const [leadOwnerIds, setLeadOwnerIds] = useState<string[]>([]);
+  const { displayNames, loading } = useUserDisplayNames(leadOwnerIds);
+
+  useEffect(() => {
+    if (field === 'lead_owner') {
+      fetchLeadOwners();
+    }
+  }, [field]);
+
+  const fetchLeadOwners = async () => {
+    try {
+      // Fetch all unique deal owners (created_by) from deals table at Lead stage
+      const { data: deals, error } = await supabase
+        .from('deals')
+        .select('created_by')
+        .eq('stage', 'Lead')
+        .not('created_by', 'is', null);
+
+      if (error) {
+        console.error('Error fetching lead owners:', error);
+        return;
+      }
+
+      // Get unique user IDs
+      const uniqueUserIds = Array.from(new Set(deals.map(deal => deal.created_by).filter(Boolean)));
+      setLeadOwnerIds(uniqueUserIds);
+    } catch (error) {
+      console.error('Error in fetchLeadOwners:', error);
+    }
+  };
 
   const getFieldLabel = (field: string) => {
     const labels: Record<string, string> = {
@@ -77,30 +110,95 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
   };
 
   const handleNumericChange = (fieldName: string, inputValue: string) => {
+    console.log(`=== NUMERIC FIELD CHANGE DEBUG ===`);
+    console.log(`Field: ${fieldName}, Input value: "${inputValue}"`);
+    
     if (inputValue === '' || inputValue === null || inputValue === undefined) {
+      console.log(`Setting ${fieldName} to 0 (empty input)`);
       onChange(fieldName, 0);
       return;
     }
+    
     const numericValue = parseFloat(inputValue);
     if (isNaN(numericValue)) {
+      console.log(`Invalid numeric value for ${fieldName}: "${inputValue}"`);
       onChange(fieldName, 0);
       return;
     }
+    
+    // For revenue fields, ensure positive values
     if (fieldName.includes('revenue') && numericValue < 0) {
+      console.log(`Setting ${fieldName} to 0 (negative value not allowed)`);
       onChange(fieldName, 0);
       return;
     }
+    
+    console.log(`Setting ${fieldName} to ${numericValue}`);
     onChange(fieldName, numericValue);
   };
 
-  const handleContactSelected = (contact: ContactForDropdown) => {
-    // Auto-fill related fields from selected contact
+  const handleContactSelect = async (contact: Contact) => {
+    console.log("Selected contact:", contact);
+    
+    // Auto-fill available fields based on contact data
     onChange('lead_name', contact.contact_name);
     if (contact.company_name) onChange('customer_name', contact.company_name);
     if (contact.region) onChange('region', contact.region);
 
-    if (onContactSelect) {
-      onContactSelect(contact);
+    // Handle lead owner - fetch display name for the contact's owner
+    const ownerUserId = contact.contact_owner;
+    if (ownerUserId) {
+      console.log("Fetching display name for contact owner:", ownerUserId);
+      
+      try {
+        const { data: functionResult, error: functionError } = await supabase.functions.invoke(
+          'fetch-user-display-names',
+          { body: { userIds: [ownerUserId] } }
+        );
+
+        if (!functionError && functionResult?.userDisplayNames) {
+          const ownerName = functionResult.userDisplayNames[ownerUserId];
+          if (ownerName) {
+            onChange('lead_owner', ownerName);
+          } else {
+            onChange('lead_owner', 'Unknown User');
+          }
+        } else {
+          // Fallback to direct query
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('id, full_name, "Email ID"')
+            .eq('id', ownerUserId)
+            .single();
+
+          if (profilesData) {
+            let displayName = "Unknown User";
+            if (profilesData.full_name?.trim() && 
+                !profilesData.full_name.includes('@') &&
+                profilesData.full_name !== profilesData["Email ID"]) {
+              displayName = profilesData.full_name.trim();
+            } else if (profilesData["Email ID"]) {
+              displayName = profilesData["Email ID"].split('@')[0];
+            }
+            onChange('lead_owner', displayName);
+          } else {
+            onChange('lead_owner', 'Unknown User');
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching contact owner display name:", error);
+        onChange('lead_owner', 'Unknown User');
+      }
+    }
+
+    onContactSelect?.(contact);
+  };
+
+  const handleAccountSelect = (account: { region?: string; industry?: string }) => {
+    // Auto-fill region from account only if currently empty
+    if (account.region && !value) {
+      // We can't check the form's region value from here, so we always set it
+      // The parent form should handle dedup logic if needed
     }
   };
 
@@ -128,12 +226,13 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
             onSelect={(selectedDate) => {
               if (selectedDate) {
                 const formattedDate = format(selectedDate, "yyyy-MM-dd");
+                console.log(`Date field ${fieldName} update: setting to ${formattedDate}`);
                 onChange(fieldName, formattedDate);
               } else {
                 onChange(fieldName, '');
               }
             }}
-            disabled={(date) => date > new Date()}
+            disabled={(date) => date > new Date()} // Disable future dates
             initialFocus
             className={cn("p-3 pointer-events-auto")}
           />
@@ -149,7 +248,7 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
           <ContactSearchableDropdown
             value={getStringValue(value)}
             onValueChange={(val) => onChange(field, val)}
-            onContactSelect={handleContactSelected}
+            onContactSelect={handleContactSelect}
             placeholder="Search and select a contact..."
           />
         );
@@ -195,7 +294,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
         return (
           <Select
             value={value ? value.toString() : ''}
-            onValueChange={(val) => onChange(field, parseInt(val))}
+            onValueChange={(val) => {
+              console.log(`Probability update: setting to ${val}`);
+              onChange(field, parseInt(val));
+            }}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select probability" />
@@ -254,7 +356,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
         return (
           <Select
             value={value?.toString() || ''}
-            onValueChange={(val) => onChange(field, val)}
+            onValueChange={(val) => {
+              console.log(`${field} update: setting to ${val}`);
+              onChange(field, val);
+            }}
           >
             <SelectTrigger>
               <SelectValue placeholder={`Select ${getFieldLabel(field).toLowerCase()}`} />
@@ -295,7 +400,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
             step="0.01"
             min="0"
             value={getStringValue(value)}
-            onChange={(e) => handleNumericChange(field, e.target.value)}
+            onChange={(e) => {
+              console.log(`Budget update: setting to ${e.target.value}`);
+              handleNumericChange(field, e.target.value);
+            }}
             placeholder="Enter budget in euros..."
           />
         );
@@ -304,7 +412,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
         return (
           <Select
             value={value?.toString() || ''}
-            onValueChange={(val) => onChange(field, val)}
+            onValueChange={(val) => {
+              console.log(`Is recurring update: setting to ${val}`);
+              onChange(field, val);
+            }}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select recurring status" />
@@ -365,7 +476,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
         return (
           <Select
             value={value?.toString() || ''}
-            onValueChange={(val) => onChange(field, val)}
+            onValueChange={(val) => {
+              console.log(`Handoff status update: setting to ${val}`);
+              onChange(field, val);
+            }}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select handoff status" />
@@ -393,7 +507,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
           <Input
             type="date"
             value={getStringValue(value)}
-            onChange={(e) => onChange(field, e.target.value)}
+            onChange={(e) => {
+              console.log(`Date field ${field} update: setting to ${e.target.value}`);
+              onChange(field, e.target.value);
+            }}
           />
         );
 
@@ -405,7 +522,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
             step="0.01"
             min="0"
             value={getStringValue(value)}
-            onChange={(e) => handleNumericChange(field, e.target.value)}
+            onChange={(e) => {
+              console.log(`RFQ numeric field ${field} update: setting to ${e.target.value}`);
+              handleNumericChange(field, e.target.value);
+            }}
             placeholder={field === 'project_duration' ? 'Enter duration in months...' : 'Enter value...'}
           />
         );
@@ -420,7 +540,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
             step="0.01"
             min="0"
             value={getStringValue(value)}
-            onChange={(e) => handleNumericChange(field, e.target.value)}
+            onChange={(e) => {
+              console.log(`Revenue field ${field} update: setting to ${e.target.value}`);
+              handleNumericChange(field, e.target.value);
+            }}
             placeholder="Enter quarterly revenue..."
           />
         );
@@ -432,7 +555,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
             step="0.01"
             min="0"
             value={getStringValue(value)}
-            onChange={(e) => handleNumericChange(field, e.target.value)}
+            onChange={(e) => {
+              console.log(`Total revenue field ${field} update: setting to ${e.target.value}`);
+              handleNumericChange(field, e.target.value);
+            }}
             placeholder="Enter total revenue..."
           />
         );
@@ -457,7 +583,10 @@ export const FormFieldRenderer = ({ field, value, onChange, onContactSelect, err
         return (
           <Textarea
             value={getStringValue(value)}
-            onChange={(e) => onChange(field, e.target.value)}
+            onChange={(e) => {
+              console.log(`Textarea field ${field} update: setting to ${e.target.value}`);
+              onChange(field, e.target.value);
+            }}
             rows={3}
             placeholder={`Enter ${getFieldLabel(field).toLowerCase()}...`}
           />

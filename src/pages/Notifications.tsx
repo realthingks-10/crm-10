@@ -69,17 +69,17 @@ const Notifications = () => {
     if (notification.module_type === 'deals' && notification.module_id) {
       navigate(`/deals?highlight=${notification.module_id}`);
     } else if (notification.module_type === 'leads' && notification.module_id) {
-      navigate(`/deals?highlight=${notification.module_id}`);
+      navigate(`/leads?highlight=${notification.module_id}`);
     } else if (notification.module_type === 'contacts' && notification.module_id) {
       navigate(`/contacts?highlight=${notification.module_id}`);
     } else if (notification.lead_id) {
-      navigate(`/deals?highlight=${notification.lead_id}`);
+      navigate(`/leads?highlight=${notification.lead_id}`);
     } else if (notification.notification_type === 'action_item') {
       navigate('/action-items');
     } else if (notification.notification_type === 'deal_update') {
       navigate('/deals');
     } else if (notification.notification_type === 'lead_update') {
-      navigate('/deals');
+      navigate('/leads');
     } else {
       navigate('/action-items');
     }
@@ -217,7 +217,7 @@ const Notifications = () => {
             <div className="text-center text-muted-foreground">
               <Bell className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
               <h3 className="text-lg font-semibold mb-2">No notifications yet</h3>
-              <p className="text-sm">You'll see updates about action items and deals here</p>
+              <p className="text-sm">You'll see updates about action items and leads here</p>
             </div>
           </div>
         ) : (

@@ -1,8 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { CSVParser } from '@/utils/csvParser';
-import { createHeaderMapper } from './headerMapper';
+// LeadsCSVProcessor removed - leads are now managed under Deals
 import { createRecordValidator } from './recordValidator';
-import { LeadsCSVProcessor } from './leadsCSVProcessor';
+import { createHeaderMapper } from './headerMapper';
 import { DateFormatUtils } from '@/utils/dateFormatUtils';
 import { normalizeCountryName, getRegionForCountry } from '@/utils/countryRegionMapping';
 import { 
@@ -36,22 +36,8 @@ export class GenericCSVProcessor {
   async processCSV(csvText: string, options: ProcessingOptions): Promise<ProcessingResult> {
     console.log(`=== GenericCSVProcessor: Starting for table "${options.tableName}" ===`);
     
-    // Use specialized processor for leads
-    if (options.tableName === 'leads') {
-      const leadsProcessor = new LeadsCSVProcessor();
-      const result = await leadsProcessor.processCSV(csvText, {
-        userId: options.userId,
-        onProgress: options.onProgress
-      });
-      
-      return {
-        successCount: result.successCount,
-        updateCount: result.updateCount,
-        duplicateCount: 0,
-        errorCount: result.errorCount,
-        errors: result.errors
-      };
-    }
+    // Leads module has been consolidated into Deals Lead stage
+    // No special leads processor needed anymore
 
     const result: ProcessingResult = {
       successCount: 0,

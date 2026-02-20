@@ -1,7 +1,4 @@
 project_id = "nreslricievaamrwfrlx"
 
-[functions.migrate-leads-to-contacts]
-verify_jwt = false
-
 [functions.scheduled-backup]
 verify_jwt = false

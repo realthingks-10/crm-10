@@ -3,12 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Deal } from "@/types/deal";
 import { FormFieldRenderer } from "./FormFieldRenderer";
 
-import { ContactForDropdown } from "@/components/ContactSearchableDropdown";
-
 interface LeadStageFormProps {
   formData: Partial<Deal>;
   onFieldChange: (field: string, value: any) => void;
-  onContactSelect?: (contact: ContactForDropdown) => void;
+  onContactSelect?: (contact: any) => void;
   fieldErrors: Record<string, string>;
 }
 

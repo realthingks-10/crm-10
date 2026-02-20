@@ -5,18 +5,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Tables that should NEVER be restored from backups (noise/session data)
+const SKIP_TABLES = ['security_audit_log', 'user_sessions', 'keep_alive']
+
 // Tables in correct deletion order (children first, parents last)
-// NOTE: security_audit_log, user_sessions, keep_alive are intentionally excluded:
-//   - security_audit_log: restoring noise rows would bloat the log; active events should not be wiped
-//   - user_sessions: deleting would sign out all active users mid-restore
-//   - keep_alive: infrastructure table, not business data
 const DELETE_ORDER = [
   'deal_action_items', 'lead_action_items', 'action_items',
   'notifications', 'notification_preferences', 'saved_filters',
   'column_preferences', 'dashboard_preferences',
   'deals', 'contacts', 'leads', 'accounts',
   'user_preferences', 'yearly_revenue_targets', 'page_permissions',
-  'profiles', 'user_roles'
+  'user_roles', 'profiles'
 ]
 
 // Tables in correct insertion order (parents first, children last)
@@ -26,12 +25,11 @@ const INSERT_ORDER = [
   'lead_action_items', 'deal_action_items', 'action_items',
   'notifications', 'notification_preferences', 'saved_filters',
   'column_preferences', 'dashboard_preferences',
-  'user_preferences', 'yearly_revenue_targets', 'page_permissions',
+  'user_preferences', 'yearly_revenue_targets', 'page_permissions'
 ]
 
 const BATCH_SIZE = 1000
 
-// Fetch all rows from a table using pagination
 async function fetchAllRows(client: any, table: string): Promise<any[]> {
   const allData: any[] = []
   let from = 0
@@ -54,7 +52,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('MY_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-    // Verify auth
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -72,7 +69,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Check admin
     const adminClient = createClient(supabaseUrl, serviceRoleKey)
     const { data: roleData } = await adminClient
       .from('user_roles')
@@ -93,7 +89,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Get backup metadata
     const { data: backup, error: fetchError } = await adminClient
       .from('backups')
       .select('*')
@@ -106,7 +101,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Download backup file from storage
     const { data: fileData, error: downloadError } = await adminClient.storage
       .from('backups')
       .download(backup.file_path)
@@ -129,7 +123,7 @@ Deno.serve(async (req) => {
     // PRE-RESTORE SAFETY BACKUP
     // ═══════════════════════════════════════════════════════════════
     console.log('Creating pre-restore safety backup...')
-    const tablesToRestore = Object.keys(backupData)
+    const tablesToRestore = Object.keys(backupData).filter(t => !SKIP_TABLES.includes(t))
     const safetyBackupData: Record<string, any[]> = {}
     const safetyManifest: Record<string, number> = {}
     let safetyTotalRecords = 0
@@ -184,7 +178,7 @@ Deno.serve(async (req) => {
     // Delete existing data in reverse dependency order
     for (const table of DELETE_ORDER) {
       if (tablesToRestore.includes(table)) {
-        const { error } = await adminClient.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000')
+        const { error } = await adminClient.from(table).delete().not('id', 'is', null)
         if (error) {
           console.error(`Error clearing ${table}:`, error)
         }

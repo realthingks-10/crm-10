@@ -124,7 +124,7 @@ interface DealFormProps {
 
   const handleContactSelect = (contact: any) => {
     console.log("Selected contact:", contact);
-    // Auto-fill is handled in FormFieldRenderer
+    // The contact selection is handled in the FormFieldRenderer component
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

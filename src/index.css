@@ -10,7 +10,7 @@ All colors MUST be HSL.
 
 @layer base {
   html {
-    font-size: 14.4px;
+    font-size: 14.4px; /* 90% of 16px - global density reduction */
   }
 
   :root {

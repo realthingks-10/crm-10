@@ -17,6 +17,7 @@ interface Account {
 interface AccountSearchableDropdownProps {
   value?: string;
   onValueChange: (value: string) => void;
+  onAccountSelect?: (account: Account) => void;
   placeholder?: string;
   className?: string;
 }
@@ -24,6 +25,7 @@ interface AccountSearchableDropdownProps {
 export const AccountSearchableDropdown = ({
   value,
   onValueChange,
+  onAccountSelect,
   placeholder = "Select account...",
   className,
 }: AccountSearchableDropdownProps) => {
@@ -54,19 +56,23 @@ export const AccountSearchableDropdown = ({
     fetchAccounts();
   }, [toast]);
 
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/[-_.,()]/g, ' ').replace(/\s+/g, ' ').trim();
+
   const filteredAccounts = useMemo(() => {
     if (!searchValue) return accounts;
-    const s = searchValue.toLowerCase();
-    return accounts.filter(
-      (a) =>
-        a.account_name?.toLowerCase().includes(s) ||
-        a.region?.toLowerCase().includes(s) ||
-        a.industry?.toLowerCase().includes(s)
-    );
+    const searchWords = normalize(searchValue).split(' ').filter(Boolean);
+    return accounts.filter((a) => {
+      const combined = normalize(
+        `${a.account_name || ''} ${a.region || ''} ${a.industry || ''}`
+      );
+      return searchWords.every((word) => combined.includes(word));
+    });
   }, [accounts, searchValue]);
 
   const handleSelect = (account: Account) => {
     onValueChange(account.account_name);
+    onAccountSelect?.(account);
     setOpen(false);
     setSearchValue("");
   };
@@ -98,14 +104,20 @@ export const AccountSearchableDropdown = ({
           </div>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[9999]" align="start" onWheel={(e) => e.stopPropagation()} onOpenAutoFocus={(e) => e.preventDefault()}>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" side="bottom" avoidCollisions={false} style={{ pointerEvents: 'auto' }}>
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search accounts..."
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandList className="max-h-[280px] overflow-y-auto" onWheel={(e) => e.stopPropagation()}>
+          <CommandList
+            onWheel={(e) => {
+              e.stopPropagation();
+              const target = e.currentTarget;
+              target.scrollTop += e.deltaY;
+            }}
+          >
             {loading ? (
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -113,7 +125,9 @@ export const AccountSearchableDropdown = ({
               </div>
             ) : (
               <>
-                <CommandEmpty>No accounts found.</CommandEmpty>
+                {filteredAccounts.length === 0 && !loading && (
+                  <div className="py-6 text-center text-sm text-muted-foreground">No accounts found.</div>
+                )}
                 <CommandGroup>
                   {filteredAccounts.map((account) => (
                     <CommandItem

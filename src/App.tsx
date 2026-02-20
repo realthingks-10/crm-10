@@ -10,7 +10,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import Contacts from "./pages/Contacts";
-
+// Leads module removed - leads are now managed under Deals Lead stage
 import DealsPage from "./pages/DealsPage";
 import ActionItems from "./pages/ActionItems";
 import Settings from "./pages/Settings";
@@ -27,7 +27,7 @@ const FixedSidebarLayout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   
   // These routes need overflow-hidden so they can control their own scrolling
-  const controlledScrollRoutes = ['/action-items', '/contacts', '/deals', '/settings', '/notifications', '/', '/accounts'];
+  const controlledScrollRoutes = ['/action-items', '/leads', '/contacts', '/deals', '/settings', '/notifications', '/', '/accounts'];
   const needsControlledScroll = controlledScrollRoutes.includes(location.pathname);
   
   return (
@@ -125,7 +125,6 @@ const AppRouter = () => (
         </ProtectedRoute>
       } />
       <Route path="/leads" element={<Navigate to="/deals" replace />} />
-
       <Route path="/deals" element={
         <ProtectedRoute>
           <DealsPage />

@@ -11,7 +11,7 @@ const BACKUP_TABLES = [
   'notification_preferences', 'page_permissions', 'profiles',
   'user_preferences', 'user_roles',
   'saved_filters', 'column_preferences', 'dashboard_preferences',
-  'yearly_revenue_targets',
+  'yearly_revenue_targets'
 ]
 
 const MODULE_TABLES: Record<string, string[]> = {
@@ -25,7 +25,6 @@ const MODULE_TABLES: Record<string, string[]> = {
 const MAX_BACKUPS = 30
 const BATCH_SIZE = 1000
 
-// Fetch all rows from a table using pagination to avoid the 1000-row limit
 async function fetchAllRows(client: any, table: string): Promise<any[]> {
   const allData: any[] = []
   let from = 0
@@ -42,12 +41,8 @@ async function fetchAllRows(client: any, table: string): Promise<any[]> {
     }
 
     if (!data || data.length === 0) break
-
     allData.push(...data)
-
-    // If we got fewer than BATCH_SIZE, we've reached the end
     if (data.length < BATCH_SIZE) break
-
     from += BATCH_SIZE
   }
 
@@ -63,7 +58,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('MY_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!
     const serviceRoleKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-    // Verify auth
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -81,7 +75,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Check admin
     const adminClient = createClient(supabaseUrl, serviceRoleKey)
     const { data: roleData } = await adminClient
       .from('user_roles')
@@ -99,13 +92,11 @@ Deno.serve(async (req) => {
     const backupType = body.backupType || 'manual'
     const moduleName = body.moduleName || null
 
-    // Determine which tables to back up
     let tablesToBackup = BACKUP_TABLES
     if (moduleName && MODULE_TABLES[moduleName]) {
       tablesToBackup = MODULE_TABLES[moduleName]
     }
 
-    // Create backup metadata record
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
     const fileName = moduleName
       ? `backup-${moduleName}-${timestamp}.json`
@@ -127,7 +118,6 @@ Deno.serve(async (req) => {
 
     if (insertError) throw insertError
 
-    // Export data from each table with pagination
     const backupData: Record<string, any[]> = {}
     const manifest: Record<string, number> = {}
     let totalRecords = 0
@@ -153,7 +143,6 @@ Deno.serve(async (req) => {
 
     const sizeBytes = new Blob([backupJson]).size
 
-    // Upload to storage
     const { error: uploadError } = await adminClient.storage
       .from('backups')
       .upload(filePath, backupJson, {
@@ -166,7 +155,6 @@ Deno.serve(async (req) => {
       throw uploadError
     }
 
-    // Update backup metadata
     await adminClient.from('backups').update({
       status: 'completed',
       size_bytes: sizeBytes,

@@ -146,7 +146,7 @@ export const DealCard = ({
         )}
         
         {/* Contract Value */}
-        {deal.total_contract_value != null && deal.total_contract_value !== 0 && (
+        {deal.total_contract_value && (
           <div className="flex items-center justify-between pt-1.5 border-t border-border/20">
             <span className="text-xs text-muted-foreground/70">Value</span>
             <p className="font-semibold text-base text-foreground">

@@ -4,6 +4,7 @@ import {
   Home, 
   Users, 
   Briefcase, 
+  UserPlus, 
   Settings, 
   Bell,
   ChevronLeft,
@@ -23,6 +24,7 @@ const CrmSidebar = () => {
     { icon: Home, label: 'Dashboard', path: '/dashboard' },
     { icon: Users, label: 'Contacts', path: '/contacts' },
     { icon: Briefcase, label: 'Deals', path: '/deals' },
+    { icon: UserPlus, label: 'Leads', path: '/leads' },
     { icon: Bell, label: 'Notifications', path: '/notifications' },
     { icon: Settings, label: 'Settings', path: '/settings' },
   ];

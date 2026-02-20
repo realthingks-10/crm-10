@@ -14,6 +14,7 @@ import { useAllUsers } from '@/hooks/useUserDisplayNames';
 import { useModuleRecordNames } from '@/hooks/useModuleRecords';
 import { ActionItem, ActionItemStatus, ActionItemPriority } from '@/hooks/useActionItems';
 import { DealForm } from './DealForm';
+// LeadModal removed - leads are now managed under Deals
 import { ContactModal } from './ContactModal';
 import { supabase } from '@/integrations/supabase/client';
 import { Deal } from '@/types/deal';
@@ -184,6 +185,17 @@ export function ActionItemsTable({
           setSelectedDeal(data as Deal);
           setDealModalOpen(true);
         }
+      } else if (normalizedType === 'lead' || normalizedType === 'leads') {
+        // Leads are now deals at Lead stage - open as deal
+        const { data } = await supabase
+          .from('deals')
+          .select('*')
+          .eq('id', moduleId)
+          .maybeSingle();
+        if (data) {
+          setSelectedDeal(data as Deal);
+          setDealModalOpen(true);
+        }
       } else if (normalizedType === 'contact' || normalizedType === 'contacts') {
         const { data } = await supabase
           .from('contacts')
@@ -239,7 +251,7 @@ export function ActionItemsTable({
     align: 'center' as const
   }, {
     field: 'title',
-    label: 'Task',
+    label: 'Action Item',
     sortable: true,
     width: columnWidths.title || 300
   }, {
@@ -309,7 +321,7 @@ export function ActionItemsTable({
                   </div>
                 </TableCell>
 
-                {/* Task */}
+                {/* Action Item */}
                 <TableCell className="py-2 px-3 text-sm" style={{
               width: `${columnWidths.title || 300}px`,
               minWidth: '200px'

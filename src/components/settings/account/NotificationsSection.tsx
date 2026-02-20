@@ -185,7 +185,7 @@ const NotificationsSection = ({ notificationPrefs, setNotificationPrefs, userId 
             />
           </div>
           <div className="flex items-center justify-between">
-            <Label className="text-sm">Task Reminders</Label>
+            <Label className="text-sm">Action Item Reminders</Label>
             <Switch
               checked={notificationPrefs.task_reminders}
               onCheckedChange={(checked) => updatePref('task_reminders', checked)}

@@ -98,7 +98,7 @@ export const getModuleName = (log: AuditLog): string => {
 export const getReadableResourceType = (resourceType: string): string => {
   const map: Record<string, string> = {
     contacts: 'Contacts', leads: 'Leads', deals: 'Deals',
-    action_items: 'Tasks', auth: 'Authentication',
+    action_items: 'Action Items', auth: 'Authentication',
     user_roles: 'User Roles', profiles: 'Profiles',
     user_management: 'User Management',
   };

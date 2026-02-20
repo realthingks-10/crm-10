@@ -221,7 +221,7 @@ export default function ActionItems() {
             
             <Button onClick={handleCreateNew}>
               <Plus className="mr-2 h-4 w-4" />
-              Add Task
+              Add Action Item
             </Button>
           </div>
         </div>
@@ -330,7 +330,7 @@ export default function ActionItems() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <span className="text-sm text-muted-foreground">
-                Showing {startItem}-{endItem} of {totalItems} tasks
+                Showing {startItem}-{endItem} of {totalItems} action items
               </span>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Show:</span>

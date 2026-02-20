@@ -25,7 +25,6 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Backup {
   id: string;
@@ -47,25 +46,40 @@ interface BackupSchedule {
   frequency: string;
   time_of_day: string;
   is_enabled: boolean;
+  backup_scope: string;
+  backup_module: string | null;
   next_run_at?: string;
   last_run_at?: string;
-  backup_scope?: string;
-  backup_module?: string;
 }
 
 const MODULES = [
   { id: 'contacts', name: 'Contacts', icon: Users, color: 'text-green-500' },
   { id: 'accounts', name: 'Accounts', icon: Building2, color: 'text-purple-500' },
-  { id: 'deals', name: 'Deals', icon: Briefcase, color: 'text-orange-500' },
-  { id: 'action_items', name: 'Tasks', icon: CheckSquare, color: 'text-cyan-500' },
+  { id: 'deals', name: 'Deals (incl. Leads)', icon: Briefcase, color: 'text-orange-500' },
+  { id: 'action_items', name: 'Action Items', icon: CheckSquare, color: 'text-cyan-500' },
   { id: 'notifications', name: 'Notifications', icon: Bell, color: 'text-yellow-500' },
 ];
+
+const LEGACY_MODULE_LABELS: Record<string, string> = {
+  leads: 'Leads (Legacy)',
+};
 
 const FREQUENCY_MAP: Record<string, number> = {
   daily: 1,
   every_2_days: 2,
   weekly: 7,
 };
+
+const FREQUENCY_LABELS: Record<string, string> = {
+  daily: 'Daily',
+  every_2_days: 'Every 2 Days',
+  weekly: 'Weekly',
+};
+
+const SCOPE_OPTIONS = [
+  { value: 'full', label: 'Full System' },
+  ...MODULES.map(m => ({ value: m.id, label: m.name })),
+];
 
 function computeNextRun(frequency: string, timeOfDay: string): string {
   const days = FREQUENCY_MAP[frequency] || 2;
@@ -75,35 +89,22 @@ function computeNextRun(frequency: string, timeOfDay: string): string {
   return next.toISOString();
 }
 
-const LEGACY_MODULE_LABELS: Record<string, string> = {
-  leads: 'Leads (Legacy)',
-};
-
 function getBackupLabel(backup: Backup): string {
   if (backup.backup_type === 'pre_restore') return '🛡️ Safety Snapshot';
-  if ((backup.backup_type === 'module' || backup.backup_type === 'scheduled') && backup.module_name) {
+  if (backup.backup_type === 'module' && backup.module_name) {
     const mod = MODULES.find(m => m.id === backup.module_name);
-    const prefix = backup.backup_type === 'scheduled' ? '⏰ ' : '';
-    if (mod) return `${prefix}${mod.name}`;
-    // Fallback for legacy module names (e.g. 'leads' removed from active MODULES)
-    const legacyLabel = LEGACY_MODULE_LABELS[backup.module_name] || backup.module_name;
-    return `${prefix}${legacyLabel}`;
+    if (mod) return mod.name;
+    return LEGACY_MODULE_LABELS[backup.module_name] || backup.module_name;
   }
-  if (backup.backup_type === 'scheduled') return '⏰ Scheduled Full';
+  if (backup.backup_type === 'scheduled') {
+    if (backup.module_name) {
+      const mod = MODULES.find(m => m.id === backup.module_name);
+      if (mod) return `Scheduled · ${mod.name}`;
+      return LEGACY_MODULE_LABELS[backup.module_name] || `Scheduled · ${backup.module_name}`;
+    }
+    return 'Scheduled · Full';
+  }
   return 'Full Backup';
-}
-
-function getStatusBadge(status: string) {
-  switch (status) {
-    case 'completed':
-      return <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Completed</Badge>;
-    case 'failed':
-      return <Badge variant="destructive" className="text-[10px]">Failed</Badge>;
-    case 'in_progress':
-      return <Badge variant="secondary" className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">In Progress</Badge>;
-    default:
-      return <Badge variant="secondary" className="text-[10px]">{status}</Badge>;
-  }
 }
 
 const BackupRestoreSettings = () => {
@@ -120,7 +121,7 @@ const BackupRestoreSettings = () => {
     time_of_day: '00:00',
     is_enabled: false,
     backup_scope: 'full',
-    backup_module: undefined,
+    backup_module: null,
   });
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [moduleCounts, setModuleCounts] = useState<Record<string, number>>({});
@@ -158,10 +159,10 @@ const BackupRestoreSettings = () => {
           frequency: (data as any).frequency || 'every_2_days',
           time_of_day: (data as any).time_of_day || '00:00',
           is_enabled: (data as any).is_enabled || false,
+          backup_scope: (data as any).backup_scope || 'full',
+          backup_module: (data as any).backup_module || null,
           next_run_at: (data as any).next_run_at,
           last_run_at: (data as any).last_run_at,
-          backup_scope: (data as any).backup_scope || 'full',
-          backup_module: (data as any).backup_module || undefined,
         });
       }
     } catch {
@@ -200,10 +201,10 @@ const BackupRestoreSettings = () => {
         frequency: newSchedule.frequency,
         time_of_day: newSchedule.time_of_day,
         is_enabled: newSchedule.is_enabled,
+        backup_scope: newSchedule.backup_scope,
+        backup_module: newSchedule.backup_scope === 'full' ? null : newSchedule.backup_module,
         created_by: user?.id,
         next_run_at: nextRunAt,
-        backup_scope: newSchedule.backup_scope || 'full',
-        backup_module: newSchedule.backup_scope === 'module' ? newSchedule.backup_module : null,
       };
 
       if (schedule.id) {
@@ -333,6 +334,10 @@ const BackupRestoreSettings = () => {
     );
   }
 
+  const selectedScopeLabel = schedule.backup_scope === 'full'
+    ? 'Full System'
+    : MODULES.find(m => m.id === schedule.backup_module)?.name || 'Full System';
+
   return (
     <>
       <div className="space-y-5">
@@ -373,9 +378,6 @@ const BackupRestoreSettings = () => {
                       {schedule.is_enabled && schedule.next_run_at
                         ? `Next: ${format(new Date(schedule.next_run_at), 'MMM d, HH:mm')}`
                         : 'Auto-backup on a schedule'}
-                      {schedule.is_enabled && schedule.last_run_at && (
-                        <> • Last: {format(new Date(schedule.last_run_at), 'MMM d, HH:mm')}</>
-                      )}
                     </p>
                   </div>
                 </div>
@@ -394,83 +396,75 @@ const BackupRestoreSettings = () => {
 
               {schedule.is_enabled && (
                 <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Frequency</Label>
-                    <Select
-                      value={schedule.frequency}
-                      onValueChange={(value) => {
-                        const newSchedule = { ...schedule, frequency: value };
-                        setSchedule(newSchedule);
-                        handleSaveSchedule(newSchedule);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="daily">Daily</SelectItem>
-                        <SelectItem value="every_2_days">Every 2 Days</SelectItem>
-                        <SelectItem value="weekly">Weekly</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Time</Label>
-                    <Select
-                      value={schedule.time_of_day}
-                      onValueChange={(value) => {
-                        const newSchedule = { ...schedule, time_of_day: value };
-                        setSchedule(newSchedule);
-                        handleSaveSchedule(newSchedule);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="00:00">12:00 AM</SelectItem>
-                        <SelectItem value="06:00">6:00 AM</SelectItem>
-                        <SelectItem value="12:00">12:00 PM</SelectItem>
-                        <SelectItem value="18:00">6:00 PM</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Scope</Label>
-                    <Select
-                      value={schedule.backup_scope === 'module' && schedule.backup_module
-                        ? `module:${schedule.backup_module}`
-                        : 'full'}
-                      onValueChange={(value) => {
-                        let newSchedule: BackupSchedule;
-                        if (value === 'full') {
-                          newSchedule = { ...schedule, backup_scope: 'full', backup_module: undefined };
-                        } else {
-                          const moduleName = value.replace('module:', '');
-                          newSchedule = { ...schedule, backup_scope: 'module', backup_module: moduleName };
-                        }
-                        setSchedule(newSchedule);
-                        handleSaveSchedule(newSchedule);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="full">Full System</SelectItem>
-                        {MODULES.map(m => (
-                          <SelectItem key={m.id} value={`module:${m.id}`}>{m.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Scope */}
+                  <Select
+                    value={schedule.backup_scope === 'full' ? 'full' : (schedule.backup_module || 'full')}
+                    onValueChange={(value) => {
+                      const isModule = value !== 'full';
+                      const newSchedule = {
+                        ...schedule,
+                        backup_scope: isModule ? 'module' : 'full',
+                        backup_module: isModule ? value : null,
+                      };
+                      setSchedule(newSchedule);
+                      handleSaveSchedule(newSchedule);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Scope" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCOPE_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Frequency */}
+                  <Select
+                    value={schedule.frequency}
+                    onValueChange={(value) => {
+                      const newSchedule = { ...schedule, frequency: value };
+                      setSchedule(newSchedule);
+                      handleSaveSchedule(newSchedule);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(FREQUENCY_LABELS).map(([key, label]) => (
+                        <SelectItem key={key} value={key}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Time */}
+                  <Select
+                    value={schedule.time_of_day}
+                    onValueChange={(value) => {
+                      const newSchedule = { ...schedule, time_of_day: value };
+                      setSchedule(newSchedule);
+                      handleSaveSchedule(newSchedule);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="00:00">12:00 AM</SelectItem>
+                      <SelectItem value="06:00">6:00 AM</SelectItem>
+                      <SelectItem value="12:00">12:00 PM</SelectItem>
+                      <SelectItem value="18:00">6:00 PM</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Module Backup - Compact Row */}
+        {/* Module Backup */}
         <Card>
           <CardHeader className="pb-3 pt-4 px-5">
             <div className="flex items-center justify-between">
@@ -481,7 +475,7 @@ const BackupRestoreSettings = () => {
             </div>
           </CardHeader>
           <CardContent className="px-5 pb-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
               {MODULES.map((module) => {
                 const Icon = module.icon;
                 const isCreating = creatingModule === module.id;
@@ -510,19 +504,14 @@ const BackupRestoreSettings = () => {
           </CardContent>
         </Card>
 
-        {/* Backup History - Table Layout */}
+        {/* Backup History */}
         <Card>
           <CardHeader className="pb-3 pt-4 px-5">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Clock className="h-4 w-4" /> Backup History
               </CardTitle>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={fetchBackups}>
-                  <RefreshCw className="h-3 w-3 mr-1" /> Refresh
-                </Button>
-                <Badge variant="secondary" className="text-xs">{backups.length} / 30</Badge>
-              </div>
+              <Badge variant="secondary" className="text-xs">{backups.length} / 30</Badge>
             </div>
           </CardHeader>
           <CardContent className="px-5 pb-4">
@@ -532,13 +521,12 @@ const BackupRestoreSettings = () => {
                 <p className="text-sm">No backups yet</p>
               </div>
             ) : (
-              <ScrollArea className="h-[400px]">
+              <div className="overflow-auto max-h-[600px]">
                 <Table>
-                  <TableHeader className="sticky top-0 z-10 bg-background">
+                  <TableHeader>
                     <TableRow>
-                      <TableHead className="text-xs w-[140px]">Type</TableHead>
+                      <TableHead className="text-xs w-[160px]">Type</TableHead>
                       <TableHead className="text-xs w-[150px]">Date</TableHead>
-                      <TableHead className="text-xs w-[80px]">Status</TableHead>
                       <TableHead className="text-xs w-[100px] text-right">Records</TableHead>
                       <TableHead className="text-xs w-[80px] text-right">Size</TableHead>
                       <TableHead className="text-xs w-[100px] text-right">Actions</TableHead>
@@ -555,9 +543,6 @@ const BackupRestoreSettings = () => {
                         </TableCell>
                         <TableCell className="py-2 text-muted-foreground">
                           {format(new Date(backup.created_at), 'dd MMM yyyy, HH:mm')}
-                        </TableCell>
-                        <TableCell className="py-2">
-                          {getStatusBadge(backup.status)}
                         </TableCell>
                         <TableCell className="py-2 text-right text-muted-foreground">
                           {backup.records_count?.toLocaleString() || 0}
@@ -592,7 +577,7 @@ const BackupRestoreSettings = () => {
                     ))}
                   </TableBody>
                 </Table>
-              </ScrollArea>
+              </div>
             )}
           </CardContent>
         </Card>

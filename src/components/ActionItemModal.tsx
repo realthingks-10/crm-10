@@ -69,6 +69,7 @@ const statusOptions: { value: ActionItemStatus; label: string; dotColor: string 
 
 const moduleOptions: { value: ModuleType; label: string }[] = [
   { value: 'deals', label: 'Deals' },
+  { value: 'leads', label: 'Leads' },
   { value: 'contacts', label: 'Contacts' },
 ];
 
@@ -164,6 +165,8 @@ export function ActionItemModal({
     switch (formData.module_type) {
       case 'deals':
         return 'Select deal...';
+      case 'leads':
+        return 'Select lead...';
       case 'contacts':
         return 'Select contact...';
       default:
@@ -234,7 +237,7 @@ export function ActionItemModal({
             </div>
           </div>
 
-          {/* Section 2: Task Details */}
+          {/* Section 2: Action Item Details */}
           <div className="space-y-4">
 
             {/* Title */}

@@ -18,7 +18,7 @@ import {
   getStatsFromLogs, formatFieldValue
 } from "./audit/auditLogUtils";
 
-type ValidTableName = 'contacts' | 'deals';
+type ValidTableName = 'contacts' | 'deals' | 'leads';
 
 const badgeColorClasses: Record<string, string> = {
   green: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -152,10 +152,10 @@ const AuditLogsSettings = () => {
 
   const canRevert = (log: AuditLog) =>
     ['CREATE', 'UPDATE', 'DELETE'].includes(log.action) &&
-    ['contacts', 'deals'].includes(log.resource_type) &&
+    ['contacts', 'deals', 'leads'].includes(log.resource_type) &&
     log.resource_id && log.details;
 
-  const isValidTableName = (t: string): t is ValidTableName => ['contacts', 'deals'].includes(t);
+  const isValidTableName = (t: string): t is ValidTableName => ['contacts', 'deals', 'leads'].includes(t);
 
   const handleRevertClick = (log: AuditLog) => { setSelectedLog(log); setRevertDialogOpen(true); };
 

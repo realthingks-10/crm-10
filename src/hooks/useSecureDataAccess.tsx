@@ -17,7 +17,7 @@ export const useSecureDataAccess = () => {
       const result = await query;
 
       if (result.error) {
-        // Log failed access attempts — these ARE meaningful
+        // Log failed access attempts
         await logSecurityEvent('DATA_ACCESS_FAILED', tableName, undefined, {
           error: result.error.message,
           operation
@@ -30,7 +30,7 @@ export const useSecureDataAccess = () => {
       console.error(`Secure ${operation} failed for ${tableName}:`, error);
       throw error;
     }
-  }, [logSecurityEvent]);
+  }, [logDataAccess, logSecurityEvent]);
 
   const secureExport = useCallback(async (
     tableName: string,

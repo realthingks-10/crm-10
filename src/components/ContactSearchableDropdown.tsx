@@ -1,99 +1,111 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export interface ContactForDropdown {
+export interface Contact {
   id: string;
   contact_name: string;
   company_name?: string | null;
+  position?: string | null;
   email?: string | null;
   phone_no?: string | null;
-  position?: string | null;
   region?: string | null;
+  contact_owner?: string | null;
+  contact_source?: string | null;
+  industry?: string | null;
   linkedin?: string | null;
+  website?: string | null;
 }
 
 interface ContactSearchableDropdownProps {
   value?: string;
+  selectedContactId?: string;
   onValueChange: (value: string) => void;
-  onContactSelect: (contact: ContactForDropdown) => void;
+  onContactSelect?: (contact: Contact) => void;
   placeholder?: string;
   className?: string;
 }
 
 export const ContactSearchableDropdown = ({
   value,
+  selectedContactId,
   onValueChange,
   onContactSelect,
-  placeholder = "Search by name or company...",
-  className
+  placeholder = "Select contact...",
+  className,
 }: ContactSearchableDropdownProps) => {
   const [open, setOpen] = useState(false);
-  const [contacts, setContacts] = useState<ContactForDropdown[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [selectedId, setSelectedId] = useState<string | undefined>(selectedContactId);
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchContacts();
-  }, []);
+    const fetchAllContacts = async () => {
+      try {
+        setLoading(true);
+        const allContacts: Contact[] = [];
+        let from = 0;
+        const BATCH = 1000;
 
-  const fetchContacts = async () => {
-    try {
-      setLoading(true);
-      const PAGE_SIZE = 1000;
-      let allData: ContactForDropdown[] = [];
-      let from = 0;
-      let hasMore = true;
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('contacts')
-          .select('id, contact_name, company_name, email, phone_no, position, region, linkedin')
-          .order('contact_name', { ascending: true })
-          .range(from, from + PAGE_SIZE - 1);
-        if (error) throw error;
-        allData = [...allData, ...(data || [])];
-        hasMore = (data?.length || 0) === PAGE_SIZE;
-        from += PAGE_SIZE;
+        while (true) {
+          const { data, error } = await supabase
+            .from("contacts")
+            .select("id, contact_name, company_name, position, email, phone_no, region, contact_owner, contact_source, industry, linkedin, website")
+            .order("contact_name", { ascending: true })
+            .range(from, from + BATCH - 1);
+
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+
+          allContacts.push(...data);
+          if (data.length < BATCH) break;
+          from += BATCH;
+        }
+
+        setContacts(allContacts);
+      } catch (error) {
+        console.error("Error fetching contacts:", error);
+        toast({ title: "Error", description: "Failed to fetch contacts", variant: "destructive" });
+      } finally {
+        setLoading(false);
       }
-      setContacts(allData);
-    } catch (error) {
-      console.error("Error fetching contacts:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch contacts",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchAllContacts();
+  }, [toast]);
 
-  const allFiltered = useMemo(() => {
-    if (!searchValue) return contacts;
-    const searchLower = searchValue.toLowerCase();
-    return contacts.filter(c =>
-      c.contact_name?.toLowerCase().includes(searchLower) ||
-      c.company_name?.toLowerCase().includes(searchLower) ||
-      c.email?.toLowerCase().includes(searchLower) ||
-      c.position?.toLowerCase().includes(searchLower)
-    );
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/[-_.,()]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const filteredContacts = useMemo(() => {
+    if (!searchValue) return contacts.slice(0, 100);
+    const searchWords = normalize(searchValue).split(' ').filter(Boolean);
+    return contacts.filter((c) => {
+      const combined = normalize(
+        `${c.contact_name || ''} ${c.company_name || ''} ${c.position || ''} ${c.email || ''}`
+      );
+      return searchWords.every((word) => combined.includes(word));
+    }).slice(0, 100);
   }, [contacts, searchValue]);
 
-  const filteredContacts = useMemo(() => allFiltered.slice(0, 100), [allFiltered]);
-
-  const selectedContact = contacts.find(c => c.contact_name === value);
-
-  const handleSelect = (contact: ContactForDropdown) => {
+  const handleSelect = (contact: Contact) => {
     onValueChange(contact.contact_name);
-    onContactSelect(contact);
+    setSelectedId(contact.id);
+    onContactSelect?.(contact);
     setOpen(false);
     setSearchValue("");
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onValueChange("");
+    setSelectedId(undefined);
   };
 
   return (
@@ -103,26 +115,35 @@ export const ContactSearchableDropdown = ({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn("w-full justify-between", className)}
+          className={cn("w-full justify-between font-normal", className)}
         >
           {value ? (
-            <span className="truncate">
-              {selectedContact?.contact_name || value}
-            </span>
+            <span className="truncate">{value}</span>
           ) : (
             <span className="text-muted-foreground">{placeholder}</span>
           )}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <div className="flex items-center gap-1 ml-2 shrink-0">
+            {value && (
+              <X className="h-3 w-3 opacity-50 hover:opacity-100" onClick={handleClear} />
+            )}
+            <ChevronsUpDown className="h-4 w-4 opacity-50" />
+          </div>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[9999]" align="start" onWheel={(e) => e.stopPropagation()} onOpenAutoFocus={(e) => e.preventDefault()}>
-        <Command shouldFilter={false} filter={() => 1}>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" side="bottom" avoidCollisions={false} style={{ pointerEvents: 'auto' }}>
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder="Search contacts..."
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandList className="max-h-[280px] overflow-y-auto" onWheel={(e) => e.stopPropagation()}>
+          <CommandList
+            onWheel={(e) => {
+              e.stopPropagation();
+              const target = e.currentTarget;
+              target.scrollTop += e.deltaY;
+            }}
+          >
             {loading ? (
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -130,10 +151,8 @@ export const ContactSearchableDropdown = ({
               </div>
             ) : (
               <>
-                {filteredContacts.length === 0 && (
-                  <div className="py-6 text-center text-sm text-muted-foreground">
-                    No contacts found.
-                  </div>
+                {filteredContacts.length === 0 && !loading && (
+                  <div className="py-6 text-center text-sm text-muted-foreground">No contacts found.</div>
                 )}
                 <CommandGroup>
                   {filteredContacts.map((contact) => (
@@ -145,29 +164,22 @@ export const ContactSearchableDropdown = ({
                     >
                       <Check
                         className={cn(
-                          "mr-2 h-4 w-4",
-                          value === contact.contact_name ? "opacity-100" : "opacity-0"
+                          "mr-2 h-4 w-4 shrink-0",
+                          (selectedId ? selectedId === contact.id : value === contact.contact_name)
+                            ? "opacity-100" : "opacity-0"
                         )}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{contact.contact_name}</div>
-                        <div className="text-sm text-muted-foreground truncate">
-                          {contact.position && <span>{contact.position}</span>}
-                          {contact.position && contact.company_name && <span> · </span>}
-                          {contact.company_name && <span>{contact.company_name}</span>}
-                          {contact.email && (
-                            <span className="ml-1 text-xs opacity-70"> ({contact.email})</span>
-                          )}
-                        </div>
+                        {(contact.company_name || contact.position) && (
+                          <div className="text-xs text-muted-foreground truncate">
+                            {[contact.company_name, contact.position].filter(Boolean).join(" • ")}
+                          </div>
+                        )}
                       </div>
                     </CommandItem>
                   ))}
                 </CommandGroup>
-                {allFiltered.length > 100 && (
-                  <div className="py-2 px-3 text-xs text-muted-foreground text-center border-t">
-                    Showing 100 of {allFiltered.length} contacts — type to narrow results
-                  </div>
-                )}
               </>
             )}
           </CommandList>
