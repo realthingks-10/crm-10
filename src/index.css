@@ -9,6 +9,10 @@ All colors MUST be HSL.
 */
 
 @layer base {
+  html {
+    font-size: 14.4px;
+  }
+
   :root {
     --background: 209 40% 96%;
     --foreground: 222 47% 11%;
