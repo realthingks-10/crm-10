@@ -65,6 +65,12 @@ export interface Deal {
   
   // Dropped stage fields
   drop_reason?: string;
+
+  // Stakeholder contacts
+  budget_owner_contact_id?: string;
+  champion_contact_id?: string;
+  objector_contact_id?: string;
+  influencer_contact_id?: string;
 }
 
 export const DEAL_STAGES: DealStage[] = ['Lead', 'Discussions', 'Qualified', 'RFQ', 'Offered', 'Won', 'Lost', 'Dropped'];

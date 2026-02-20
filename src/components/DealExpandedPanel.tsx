@@ -45,6 +45,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 import { useAuth } from "@/hooks/useAuth";
+import { ContactSearchableDropdown, Contact } from "@/components/ContactSearchableDropdown";
+import { Users } from "lucide-react";
 
 interface DealExpandedPanelProps {
   deal: Deal;
@@ -171,6 +173,79 @@ const parseChangeSummary = (action: string, details: Record<string, unknown> | n
     return `${first.field}: ${first.oldValue} → ${first.newValue}`;
   }
   return `${first.field} +${changes.length - 1}`;
+};
+
+// Stakeholders Section Component
+const StakeholdersSection = ({ deal, queryClient }: { deal: Deal; queryClient: ReturnType<typeof useQueryClient> }) => {
+  const [budgetOwner, setBudgetOwner] = useState<string>(deal.budget_owner_contact_id || "");
+  const [champion, setChampion] = useState<string>(deal.champion_contact_id || "");
+  const [objector, setObjector] = useState<string>(deal.objector_contact_id || "");
+  const [influencer, setInfluencer] = useState<string>(deal.influencer_contact_id || "");
+  const [contactNames, setContactNames] = useState<Record<string, string>>({});
+
+  // Fetch contact names for existing stakeholder IDs
+  useEffect(() => {
+    const ids = [deal.budget_owner_contact_id, deal.champion_contact_id, deal.objector_contact_id, deal.influencer_contact_id].filter(Boolean) as string[];
+    if (ids.length === 0) return;
+    
+    const fetchNames = async () => {
+      const { data } = await supabase.from("contacts").select("id, contact_name").in("id", ids);
+      if (data) {
+        const names: Record<string, string> = {};
+        data.forEach(c => { names[c.id] = c.contact_name; });
+        setContactNames(names);
+      }
+    };
+    fetchNames();
+  }, [deal.budget_owner_contact_id, deal.champion_contact_id, deal.objector_contact_id, deal.influencer_contact_id]);
+
+  const handleStakeholderChange = async (field: string, contactId: string | null, contactName: string) => {
+    const update: Record<string, any> = { [field]: contactId, modified_at: new Date().toISOString() };
+    await supabase.from("deals").update(update).eq("id", deal.id);
+    queryClient.invalidateQueries({ queryKey: ["deals"] });
+    if (contactId) {
+      setContactNames(prev => ({ ...prev, [contactId]: contactName }));
+    }
+  };
+
+  const stakeholders = [
+    { label: "Budget Owner", field: "budget_owner_contact_id", value: budgetOwner, setValue: setBudgetOwner },
+    { label: "Champion", field: "champion_contact_id", value: champion, setValue: setChampion },
+    { label: "Objector", field: "objector_contact_id", value: objector, setValue: setObjector },
+    { label: "Influencer", field: "influencer_contact_id", value: influencer, setValue: setInfluencer },
+  ];
+
+  return (
+    <div className="px-2 pt-2 pb-1">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-[11px] font-bold text-muted-foreground">Deal Related</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {stakeholders.map(({ label, field, value, setValue }) => (
+          <div key={field} className="space-y-0.5">
+            <Label className="text-[10px] text-muted-foreground">{label}</Label>
+            <ContactSearchableDropdown
+              value={value ? (contactNames[value] || "") : ""}
+              selectedContactId={value || undefined}
+              onValueChange={(val) => {
+                if (!val) {
+                  setValue("");
+                  handleStakeholderChange(field, null, "");
+                }
+              }}
+              onContactSelect={(contact: Contact) => {
+                setValue(contact.id);
+                handleStakeholderChange(field, contact.id, contact.contact_name);
+              }}
+              placeholder={`Select ${label.toLowerCase()}...`}
+              className="h-7 text-xs"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 export const DealExpandedPanel = ({
@@ -621,9 +696,12 @@ export const DealExpandedPanel = ({
 
         {/* Content */}
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden gap-1">
+          {/* Stakeholders Section */}
+          <StakeholdersSection deal={deal} queryClient={queryClient} />
+
           {/* History Section */}
           <div className="flex flex-col flex-1 min-h-0 relative">
-            <div className="h-[280px] overflow-y-auto relative" ref={historyScrollRef}>
+            <div className="h-[220px] overflow-y-auto relative" ref={historyScrollRef}>
               {isLoading ?
               <div className="flex items-center justify-center py-6">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
@@ -718,7 +796,7 @@ export const DealExpandedPanel = ({
 
           {/* Action Items Section - relative for floating button */}
           <div className="flex flex-col flex-1 min-h-0">
-            <div className="h-[280px] overflow-y-auto relative" ref={actionItemsScrollRef}>
+            <div className="h-[220px] overflow-y-auto relative" ref={actionItemsScrollRef}>
               {isLoading ?
               <div className="flex items-center justify-center py-6">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
