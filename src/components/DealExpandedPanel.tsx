@@ -59,6 +59,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 import { useAuth } from "@/hooks/useAuth";
+import { useCRUDAudit } from "@/hooks/useCRUDAudit";
 import { Contact } from "@/components/ContactSearchableDropdown";
 import { Users } from "lucide-react";
 
