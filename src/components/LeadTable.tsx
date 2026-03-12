@@ -83,7 +83,7 @@ const LeadTable = ({
   clearHighlight
 }: LeadTableProps) => {
   const { toast } = useToast();
-  const { logDelete } = useCRUDAudit();
+  const { logDelete, logUpdate } = useCRUDAudit();
   const [pageLeads, setPageLeads] = useState<Lead[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -307,8 +307,10 @@ const LeadTable = ({
   const handleConvertSuccess = async () => {
     if (leadToConvert) {
       try {
+        const oldStatus = leadToConvert.lead_status;
         const { error } = await supabase.from('leads').update({ lead_status: 'Converted' }).eq('id', leadToConvert.id);
         if (!error) {
+          await logUpdate('leads', leadToConvert.id, { lead_status: 'Converted' }, { lead_status: oldStatus, lead_name: leadToConvert.lead_name });
           setPageLeads(prevLeads => prevLeads.map(lead => 
             lead.id === leadToConvert.id ? { ...lead, lead_status: 'Converted' } : lead
           ));

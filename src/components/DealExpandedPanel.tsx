@@ -59,6 +59,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 import { useAuth } from "@/hooks/useAuth";
+import { useCRUDAudit } from "@/hooks/useCRUDAudit";
 import { Contact } from "@/components/ContactSearchableDropdown";
 import { Users } from "lucide-react";
 
@@ -414,19 +415,26 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
     return map;
   }, [allContacts]);
 
+  const { logCreate: logStakeholderCreate, logDelete: logStakeholderDelete } = useCRUDAudit();
+
   const handleAddContact = async (role: string, contact: Contact) => {
-    const { error } = await supabase.from("deal_stakeholders").insert({
+    const insertData = {
       deal_id: deal.id,
       contact_id: contact.id,
       role,
       created_by: user?.id
-    });
+    };
+    const { data, error } = await supabase.from("deal_stakeholders").insert(insertData).select().single();
     if (error) {console.error("Error adding stakeholder:", error);return;}
+    await logStakeholderCreate('deal_stakeholders', data?.id || '', { ...insertData, contact_name: contact.contact_name, deal_name: deal.deal_name });
     queryClient.invalidateQueries({ queryKey: ["deal-stakeholders", deal.id] });
   };
 
   const handleRemoveContact = async (stakeholderId: string) => {
+    const stakeholder = stakeholders?.find(s => s.id === stakeholderId);
+    const contactName = stakeholder ? contactNames[stakeholder.contact_id] : undefined;
     await supabase.from("deal_stakeholders").delete().eq("id", stakeholderId);
+    await logStakeholderDelete('deal_stakeholders', stakeholderId, { ...stakeholder, contact_name: contactName, deal_name: deal.deal_name });
     queryClient.invalidateQueries({ queryKey: ["deal-stakeholders", deal.id] });
   };
 
@@ -635,6 +643,7 @@ export const DealExpandedPanel = ({
   const actionItemsScrollRef = useRef<HTMLDivElement>(null);
 
   const { users, getUserDisplayName } = useAllUsers();
+  const { logCreate, logUpdate, logDelete } = useCRUDAudit();
 
   // Fetch audit logs for the deal - ascending order (newest at bottom)
   const { data: auditLogs = [], isLoading: logsLoading } = useQuery({
@@ -800,6 +809,18 @@ export const DealExpandedPanel = ({
       });
 
       if (error) throw error;
+
+      // Log the action item creation
+      await logCreate('action_items', '', {
+        title: actionTitle.trim(),
+        module_type: 'deals',
+        module_id: deal.id,
+        deal_name: deal.deal_name,
+        assigned_to: actionAssignedTo === "unassigned" ? null : actionAssignedTo,
+        due_date: actionDueDate || null,
+        priority: actionPriority,
+        status: actionStatus
+      });
 
       queryClient.invalidateQueries({ queryKey: ["deal-action-items-unified", deal.id] });
 
@@ -975,26 +996,13 @@ export const DealExpandedPanel = ({
 
   const handleStatusChange = async (id: string, status: string) => {
     const item = actionItems.find((i) => i.id === id);
+    const oldStatus = item?.status;
     await supabase.from("action_items").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
 
-    // Only log to history when completed or cancelled
+    // Log ALL status changes via useCRUDAudit
+    await logUpdate('action_items', id, { status }, { status: oldStatus, title: item?.title, deal_name: deal.deal_name });
+
     if (status === "Completed" || status === "Cancelled") {
-      try {
-        await supabase.from("security_audit_log").insert({
-          action: "update",
-          resource_type: "deals",
-          resource_id: deal.id,
-          user_id: user?.id,
-          details: {
-            message: `${item?.title} → ${status}`,
-            field_changes: { status: { old: item?.status, new: status } },
-            action_item_id: id,
-            action_item_title: item?.title
-          }
-        });
-      } catch (e) {
-        console.error("Failed to log status change:", e);
-      }
       queryClient.invalidateQueries({ queryKey: ["deal-audit-logs", deal.id] });
     }
 
@@ -1002,20 +1010,25 @@ export const DealExpandedPanel = ({
   };
 
   const handleAssignedToChange = async (id: string, userId: string | null) => {
-    await supabase.
-    from("action_items").
-    update({ assigned_to: userId, updated_at: new Date().toISOString() }).
-    eq("id", id);
+    const item = actionItems.find((i) => i.id === id);
+    const oldAssignedTo = item?.assigned_to;
+    await supabase.from("action_items").update({ assigned_to: userId, updated_at: new Date().toISOString() }).eq("id", id);
+    await logUpdate('action_items', id, { assigned_to: userId }, { assigned_to: oldAssignedTo, title: item?.title, deal_name: deal.deal_name });
     invalidateActionItems();
   };
 
   const handleDueDateChange = async (id: string, date: string | null) => {
+    const item = actionItems.find((i) => i.id === id);
+    const oldDueDate = item?.due_date;
     await supabase.from("action_items").update({ due_date: date, updated_at: new Date().toISOString() }).eq("id", id);
+    await logUpdate('action_items', id, { due_date: date }, { due_date: oldDueDate, title: item?.title, deal_name: deal.deal_name });
     invalidateActionItems();
   };
 
   const handleDeleteActionItem = async (id: string) => {
+    const item = actionItems.find((i) => i.id === id);
     await supabase.from("action_items").delete().eq("id", id);
+    await logDelete('action_items', id, { ...item, deal_name: deal.deal_name });
     invalidateActionItems();
   };
 

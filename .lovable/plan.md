@@ -1,78 +1,91 @@
 
 
-## Audit Logging Gap Analysis — Full CRM App
+## Fix Note Editor Bullet Point & Stakeholders Layout Issues
 
-After deep-diving into every module's CRUD operations, here are all the missing audit log entries and improvements needed.
+### Issues Found
 
----
+1. **Bullet point moves when typing**: `autoFocus` on the Textarea (line 633) places the cursor at position 0 (before `"• "`), so typing inserts text before the bullet instead of after it.
 
-### CRITICAL GAPS (No Audit Logging At All)
+2. **Notes panel lacks proper scrollbar**: The notes summary panel (line 580-679) has a `max-h-[280px]` on the inner div but the outer wrapper has no scroll constraint, so it still pushes content.
 
-| # | Location | Operation | Impact |
-|---|----------|-----------|--------|
-| 1 | `DealExpandedPanel.tsx` — `handleDeleteActionItem` (line 1017) | Action item DELETE | **This is the bug you reported** — Deepak's deletions are invisible |
-| 2 | `DealExpandedPanel.tsx` — `handleAddActionItem` (line 786) | Action item CREATE from deal panel | New action items created inline are not logged |
-| 3 | `DealExpandedPanel.tsx` — `handleStatusChange` (line 976) | Action item status UPDATE (Open/In Progress) | Only logs Completed/Cancelled, misses other status changes |
-| 4 | `DealExpandedPanel.tsx` — `handleAssignedToChange` (line 1004) | Action item REASSIGNMENT | Assignment changes are silent |
-| 5 | `DealExpandedPanel.tsx` — `handleDueDateChange` (line 1012) | Action item DUE DATE change | Date changes are silent |
-| 6 | `DealExpandedPanel.tsx` — `StakeholdersSection.handleAddContact` (line 417) | Stakeholder ADD | Adding budget owner/champion/etc not logged |
-| 7 | `DealExpandedPanel.tsx` — `StakeholdersSection.handleRemoveContact` (line 428) | Stakeholder REMOVE | Removing stakeholders not logged |
-| 8 | `AccountTable.tsx` — `handleBulkDelete` (line 196) | Accounts BULK DELETE | Deletes multiple accounts with zero audit trail |
-| 9 | `ContactTable.tsx` — `handleConvertToLead` (line 196) | Contact → Lead conversion | Creates a lead but neither the conversion nor the lead creation is logged |
-| 10 | `LeadTable.tsx` — `handleConvertSuccess` (line 307) | Lead status → "Converted" | Status update to 'Converted' is not logged |
-| 11 | `useActionItems.tsx` — `bulkDeleteMutation` (line 345) | Action items BULK DELETE | No audit logging in the hook |
-| 12 | `useActionItems.tsx` — `bulkUpdateStatusMutation` | Action items BULK STATUS UPDATE | No audit logging in the hook |
-| 13 | `InlineEditCell.tsx` / List view inline edits | Deal field inline edits | The `onSave` callback goes to `handleUpdateDeal` in DealsPage which IS logged — but only if called through that path. Need to verify all paths. |
+3. **Stakeholders section grows unbounded**: The `StakeholdersSection` component has no max-height. When the Notes panel is open with many notes, it consumes all vertical space, squishing the Updates and Action Items sections to near-zero height.
 
----
+### Changes (single file: `src/components/DealExpandedPanel.tsx`)
 
-### IMPROVEMENTS NEEDED
+#### Fix 1: Bullet cursor positioning (line 628-634)
 
-| # | Issue | Detail |
-|---|-------|--------|
-| A | **DealExpandedPanel uses raw `security_audit_log` insert** instead of `useCRUDAudit` | Lines 983-994 manually insert into the audit table with inconsistent format (action: "update" lowercase vs standard "UPDATE") |
-| B | **Deals single delete uses `logBulkDelete`** | Even single deal deletes go through `handleDeleteDeals` which calls `logBulkDelete` — should use `logDelete` for single deletes with full deal data |
-| C | **Account bulk delete has no logging** | `AccountTable.handleBulkDelete` has no `logBulkDelete` call |
-| D | **DealExpandedPanel action item CREATE doesn't use `logCreate`** | Should use `useCRUDAudit` consistently |
-| E | **Stakeholder changes are completely unaudited** | All add/remove stakeholder operations in the deal panel are invisible |
-| F | **Contact → Lead conversion is unaudited** | `ContactTable.handleConvertToLead` creates a lead with no audit trail |
+Replace `autoFocus` on the Textarea with a `ref` callback that focuses the element AND places the cursor at the end of the text (after `"• "`):
 
----
+```tsx
+<Textarea
+  value={noteText}
+  onChange={(e) => setNoteText(e.target.value)}
+  onKeyDown={handleNoteKeyDown}
+  className="min-h-[100px] text-xs resize-none"
+  ref={(el) => {
+    if (el) {
+      el.focus();
+      const len = el.value.length;
+      el.selectionStart = len;
+      el.selectionEnd = len;
+    }
+  }}
+/>
+```
 
-### Implementation Plan
+#### Fix 2: Constrain Stakeholders section height
 
-**File: `src/components/DealExpandedPanel.tsx`**
-1. Import and initialize `useCRUDAudit` hook
-2. `handleDeleteActionItem`: Capture item data before delete, call `logDelete('action_items', id, itemData)`
-3. `handleAddActionItem`: After successful insert, call `logCreate('action_items', ...)` with the inserted data
-4. `handleStatusChange`: Use `logUpdate` for ALL status changes (not just Completed/Cancelled), replace raw `security_audit_log` insert with `useCRUDAudit`
-5. `handleAssignedToChange`: Add `logUpdate('action_items', id, { assigned_to: userId }, { assigned_to: oldValue })`
-6. `handleDueDateChange`: Add `logUpdate('action_items', id, { due_date: date }, { due_date: oldValue })`
-7. `StakeholdersSection`: Import `useCRUDAudit`, log `handleAddContact` as CREATE on `deal_stakeholders`, log `handleRemoveContact` as DELETE on `deal_stakeholders`
+Wrap the StakeholdersSection output in a container with `max-h` and `overflow-y-auto` so it scrolls when content is large. Change the outer div (line 462) from:
 
-**File: `src/components/AccountTable.tsx`**
-8. Add `logBulkDelete('accounts', selectedAccounts.length, selectedAccounts)` to `handleBulkDelete`
+```tsx
+<div className="px-3 pt-1.5 pb-1">
+```
 
-**File: `src/components/ContactTable.tsx`**
-9. Add `logCreate('leads', ..., leadData)` to `handleConvertToLead` after successful insert
+to:
 
-**File: `src/components/LeadTable.tsx`**
-10. Add `logUpdate('leads', leadToConvert.id, { lead_status: 'Converted' }, { lead_status: leadToConvert.lead_status })` to `handleConvertSuccess`
+```tsx
+<div className="px-3 pt-1.5 pb-1 max-h-[45%] overflow-y-auto shrink-0">
+```
 
-**File: `src/hooks/useActionItems.tsx`**
-11. This hook doesn't use `useCRUDAudit` — but the callers in `ActionItems.tsx` do log after calling the mutations. This is acceptable as-is since logging happens at the page level.
+However, since this is not inside a flex parent that uses percentage heights well, a better approach is to change the parent layout. The parent (line 1182) is:
 
-**File: `src/pages/DealsPage.tsx`**
-12. In `handleDeleteDeals` for single deletes (dealIds.length === 1), use `logDelete` with the full deal data instead of `logBulkDelete`
+```tsx
+<div className="flex-1 min-h-0 flex flex-col overflow-hidden gap-1">
+```
 
----
+The fix: Make the StakeholdersSection a flex item that can shrink, and give it a max-height so it doesn't dominate. Change line 1184 from:
+
+```tsx
+<StakeholdersSection deal={deal} queryClient={queryClient} />
+```
+
+to wrap it in a constrained container:
+
+```tsx
+<div className="shrink-0 max-h-[40%] overflow-y-auto">
+  <StakeholdersSection deal={deal} queryClient={queryClient} />
+</div>
+```
+
+This ensures:
+- Stakeholders section gets at most 40% of the panel height
+- When content exceeds that, a scrollbar appears
+- Updates and Action Items always get their fair share of space
+
+#### Fix 3: Ensure notes panel scrolls properly
+
+The notes summary panel (line 596) already has `max-h-[280px] overflow-y-auto`, but when inside the constrained container from Fix 2, this works correctly. No additional change needed here -- the outer scroll from Fix 2 handles it.
 
 ### Summary
 
-**13 missing audit points** across 5 files. The biggest blind spots are:
-- All inline action item operations in the Deal Expanded Panel (create, delete, reassign, date change)
-- All stakeholder add/remove operations  
-- Account bulk deletes
-- Contact-to-Lead conversions
-- Lead status changes on conversion
+| Change | Line(s) | Description |
+|--------|---------|-------------|
+| Replace `autoFocus` with ref callback | 628-634 | Cursor placed after bullet on open |
+| Wrap StakeholdersSection in scrollable container | 1184 | Max 40% height with scrollbar |
+
+### Technical Notes
+
+- The ref callback fires on every render, but since `el.focus()` is idempotent when already focused, this is harmless
+- The `max-h-[40%]` works because the parent has `flex-1 min-h-0` which resolves to an actual pixel height
+- Updates and Action Items sections keep their `flex-1 min-h-0` with `h-[220px]`, ensuring they share remaining space equally
 
