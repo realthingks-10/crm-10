@@ -809,6 +809,18 @@ export const DealExpandedPanel = ({
 
       if (error) throw error;
 
+      // Log the action item creation
+      await logCreate('action_items', '', {
+        title: actionTitle.trim(),
+        module_type: 'deals',
+        module_id: deal.id,
+        deal_name: deal.deal_name,
+        assigned_to: actionAssignedTo === "unassigned" ? null : actionAssignedTo,
+        due_date: actionDueDate || null,
+        priority: actionPriority,
+        status: actionStatus
+      });
+
       queryClient.invalidateQueries({ queryKey: ["deal-action-items-unified", deal.id] });
 
       // Reset form
