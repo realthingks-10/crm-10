@@ -17,7 +17,7 @@ const DealsPage = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { logCreate, logUpdate, logBulkDelete } = useCRUDAudit();
+  const { logCreate, logUpdate, logDelete, logBulkDelete } = useCRUDAudit();
   
   // URL params for highlight from notifications
   const [searchParams, setSearchParams] = useSearchParams();
