@@ -995,26 +995,13 @@ export const DealExpandedPanel = ({
 
   const handleStatusChange = async (id: string, status: string) => {
     const item = actionItems.find((i) => i.id === id);
+    const oldStatus = item?.status;
     await supabase.from("action_items").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
 
-    // Only log to history when completed or cancelled
+    // Log ALL status changes via useCRUDAudit
+    await logUpdate('action_items', id, { status }, { status: oldStatus, title: item?.title, deal_name: deal.deal_name });
+
     if (status === "Completed" || status === "Cancelled") {
-      try {
-        await supabase.from("security_audit_log").insert({
-          action: "update",
-          resource_type: "deals",
-          resource_id: deal.id,
-          user_id: user?.id,
-          details: {
-            message: `${item?.title} → ${status}`,
-            field_changes: { status: { old: item?.status, new: status } },
-            action_item_id: id,
-            action_item_title: item?.title
-          }
-        });
-      } catch (e) {
-        console.error("Failed to log status change:", e);
-      }
       queryClient.invalidateQueries({ queryKey: ["deal-audit-logs", deal.id] });
     }
 
@@ -1022,20 +1009,25 @@ export const DealExpandedPanel = ({
   };
 
   const handleAssignedToChange = async (id: string, userId: string | null) => {
-    await supabase.
-    from("action_items").
-    update({ assigned_to: userId, updated_at: new Date().toISOString() }).
-    eq("id", id);
+    const item = actionItems.find((i) => i.id === id);
+    const oldAssignedTo = item?.assigned_to;
+    await supabase.from("action_items").update({ assigned_to: userId, updated_at: new Date().toISOString() }).eq("id", id);
+    await logUpdate('action_items', id, { assigned_to: userId }, { assigned_to: oldAssignedTo, title: item?.title, deal_name: deal.deal_name });
     invalidateActionItems();
   };
 
   const handleDueDateChange = async (id: string, date: string | null) => {
+    const item = actionItems.find((i) => i.id === id);
+    const oldDueDate = item?.due_date;
     await supabase.from("action_items").update({ due_date: date, updated_at: new Date().toISOString() }).eq("id", id);
+    await logUpdate('action_items', id, { due_date: date }, { due_date: oldDueDate, title: item?.title, deal_name: deal.deal_name });
     invalidateActionItems();
   };
 
   const handleDeleteActionItem = async (id: string) => {
+    const item = actionItems.find((i) => i.id === id);
     await supabase.from("action_items").delete().eq("id", id);
+    await logDelete('action_items', id, { ...item, deal_name: deal.deal_name });
     invalidateActionItems();
   };
 

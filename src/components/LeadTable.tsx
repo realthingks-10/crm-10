@@ -307,8 +307,10 @@ const LeadTable = ({
   const handleConvertSuccess = async () => {
     if (leadToConvert) {
       try {
+        const oldStatus = leadToConvert.lead_status;
         const { error } = await supabase.from('leads').update({ lead_status: 'Converted' }).eq('id', leadToConvert.id);
         if (!error) {
+          await logUpdate('leads', leadToConvert.id, { lead_status: 'Converted' }, { lead_status: oldStatus, lead_name: leadToConvert.lead_name });
           setPageLeads(prevLeads => prevLeads.map(lead => 
             lead.id === leadToConvert.id ? { ...lead, lead_status: 'Converted' } : lead
           ));

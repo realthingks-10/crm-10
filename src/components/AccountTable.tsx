@@ -198,6 +198,7 @@ export const AccountTable = ({
     try {
       const { error } = await supabase.from('accounts').delete().in('id', selectedAccounts);
       if (error) throw error;
+      await logBulkDelete('accounts', selectedAccounts.length, selectedAccounts);
       toast({ title: "Success", description: `${selectedAccounts.length} account${selectedAccounts.length !== 1 ? 's' : ''} deleted successfully` });
       setSelectedAccounts([]);
       fetchAccounts();

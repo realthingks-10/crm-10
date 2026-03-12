@@ -74,7 +74,7 @@ export const ContactTable = ({
   setSearchTerm
 }: ContactTableProps) => {
   const { toast } = useToast();
-  const { logDelete } = useCRUDAudit();
+  const { logDelete, logCreate } = useCRUDAudit();
   const [pageContacts, setPageContacts] = useState<Contact[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
