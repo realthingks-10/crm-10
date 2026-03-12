@@ -643,6 +643,7 @@ export const DealExpandedPanel = ({
   const actionItemsScrollRef = useRef<HTMLDivElement>(null);
 
   const { users, getUserDisplayName } = useAllUsers();
+  const { logCreate, logUpdate, logDelete } = useCRUDAudit();
 
   // Fetch audit logs for the deal - ascending order (newest at bottom)
   const { data: auditLogs = [], isLoading: logsLoading } = useQuery({

@@ -83,7 +83,7 @@ const LeadTable = ({
   clearHighlight
 }: LeadTableProps) => {
   const { toast } = useToast();
-  const { logDelete } = useCRUDAudit();
+  const { logDelete, logUpdate } = useCRUDAudit();
   const [pageLeads, setPageLeads] = useState<Lead[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
