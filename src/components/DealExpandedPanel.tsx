@@ -415,19 +415,26 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
     return map;
   }, [allContacts]);
 
+  const { logCreate: logStakeholderCreate, logDelete: logStakeholderDelete } = useCRUDAudit();
+
   const handleAddContact = async (role: string, contact: Contact) => {
-    const { error } = await supabase.from("deal_stakeholders").insert({
+    const insertData = {
       deal_id: deal.id,
       contact_id: contact.id,
       role,
       created_by: user?.id
-    });
+    };
+    const { data, error } = await supabase.from("deal_stakeholders").insert(insertData).select().single();
     if (error) {console.error("Error adding stakeholder:", error);return;}
+    await logStakeholderCreate('deal_stakeholders', data?.id || '', { ...insertData, contact_name: contact.contact_name, deal_name: deal.deal_name });
     queryClient.invalidateQueries({ queryKey: ["deal-stakeholders", deal.id] });
   };
 
   const handleRemoveContact = async (stakeholderId: string) => {
+    const stakeholder = stakeholders?.find(s => s.id === stakeholderId);
+    const contactName = stakeholder ? contactNames[stakeholder.contact_id] : undefined;
     await supabase.from("deal_stakeholders").delete().eq("id", stakeholderId);
+    await logStakeholderDelete('deal_stakeholders', stakeholderId, { ...stakeholder, contact_name: contactName, deal_name: deal.deal_name });
     queryClient.invalidateQueries({ queryKey: ["deal-stakeholders", deal.id] });
   };
 
