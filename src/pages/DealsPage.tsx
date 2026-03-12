@@ -152,7 +152,7 @@ const DealsPage = () => {
         // Log create operation
         await logCreate('deals', data.id, dealData);
 
-        setDeals(prev => [data as unknown as Deal, ...prev]);
+        // Real-time subscription handles adding to state — no manual insert needed
       } else if (selectedDeal) {
         const updateData = {
           ...dealData,
@@ -212,18 +212,30 @@ const DealsPage = () => {
         });
       }
 
-      // Show a clear permission message for deals that couldn't be deleted
+      // For IDs that weren't deleted, check if they actually exist in DB
       if (notDeleted.length > 0) {
-        toast({
-          title: "Permission Denied",
-          description: `You don't have permission to delete ${notDeleted.length} deal(s).`,
-          variant: "destructive",
-        });
-      }
+        const { data: existing } = await supabase
+          .from('deals')
+          .select('id')
+          .in('id', notDeleted);
 
-      // If nothing was deleted at all, ensure user is informed
-      if (deletedIds.length === 0 && notDeleted.length === dealIds.length) {
-        console.warn("No deals were deleted due to RLS. User may be non-owner/non-admin.");
+        const existingIds = (existing || []).map((r: { id: string }) => r.id);
+        const ghostIds = notDeleted.filter(id => !existingIds.includes(id));
+
+        // Remove ghost entries from local state silently
+        if (ghostIds.length > 0) {
+          setDeals(prev => prev.filter(deal => !ghostIds.includes(deal.id)));
+        }
+
+        // Only show permission error for deals that actually exist but couldn't be deleted
+        const reallyDenied = existingIds.length;
+        if (reallyDenied > 0) {
+          toast({
+            title: "Permission Denied",
+            description: `You don't have permission to delete ${reallyDenied} deal(s).`,
+            variant: "destructive",
+          });
+        }
       }
     } catch (error) {
       console.error("Unexpected delete error:", error);

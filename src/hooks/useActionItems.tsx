@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 export type ActionItemPriority = 'Low' | 'Medium' | 'High';
 export type ActionItemStatus = 'Open' | 'In Progress' | 'Completed' | 'Cancelled';
-export type ModuleType = 'deals' | 'leads' | 'contacts';
+export type ModuleType = 'accounts' | 'contacts' | 'deals';
 
 export interface ActionItem {
   id: string;
@@ -71,7 +71,6 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
     data: actionItems = [],
     isLoading,
     error,
-    refetch,
   } = useQuery({
     queryKey: ['action_items', filters],
     queryFn: async () => {
@@ -100,12 +99,10 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
       
       // Filter by archived/completed status
       if (!filters.showArchived) {
-        // Show non-completed, non-archived items
         query = query
           .is('archived_at', null)
           .neq('status', 'Completed');
       } else {
-        // Show completed or archived items
         query = query.or('status.eq.Completed,archived_at.not.is.null');
       }
 
@@ -116,7 +113,14 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
     enabled: !!user,
   });
 
-  // Create action item
+  // Helper: get all matching query keys for optimistic updates
+  const getActionItemsQueryKeys = () => {
+    return queryClient.getQueryCache()
+      .findAll({ queryKey: ['action_items'] })
+      .map(q => q.queryKey as readonly unknown[]);
+  };
+
+  // Create action item — with optimistic updates
   const createMutation = useMutation({
     mutationFn: async (input: CreateActionItemInput) => {
       if (!user) throw new Error('User not authenticated');
@@ -133,17 +137,59 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['action_items'] });
-      toast.success('Action item created successfully');
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: ['action_items'] });
+
+      const tempId = `temp-${Date.now()}`;
+      const optimisticItem: ActionItem = {
+        id: tempId,
+        module_type: input.module_type,
+        module_id: input.module_id ?? null,
+        title: input.title,
+        description: input.description ?? null,
+        assigned_to: input.assigned_to ?? null,
+        due_date: input.due_date ?? null,
+        due_time: input.due_time ?? null,
+        priority: input.priority ?? 'Medium',
+        status: input.status ?? 'Open',
+        created_by: user!.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const queryKeys = getActionItemsQueryKeys();
+      const previousSnapshots: { queryKey: readonly unknown[]; data: unknown }[] = [];
+
+      for (const queryKey of queryKeys) {
+        const data = queryClient.getQueryData(queryKey);
+        previousSnapshots.push({ queryKey, data });
+
+        queryClient.setQueryData(queryKey, (old: ActionItem[] | undefined) => {
+          if (!old) return [optimisticItem];
+          return [optimisticItem, ...old];
+        });
+      }
+
+      return { previousSnapshots, tempId };
     },
-    onError: (error) => {
+    onError: (error, _input, context) => {
       console.error('Error creating action item:', error);
       toast.error('Failed to create action item');
+      if (context?.previousSnapshots) {
+        for (const { queryKey, data } of context.previousSnapshots) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success('Action item created successfully');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['action_items'] });
     },
   });
 
-  // Update action item
+  // Update action item — with optimistic updates
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...input }: UpdateActionItemInput) => {
       const { data, error } = await supabase
@@ -156,17 +202,51 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
       if (error) throw error;
       return data;
     },
+    onMutate: async (updatedItem) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['action_items'] });
+
+      // Snapshot all action_items caches
+      const queryKeys = getActionItemsQueryKeys();
+      const previousSnapshots: { queryKey: readonly unknown[]; data: unknown }[] = [];
+
+      for (const queryKey of queryKeys) {
+        const data = queryClient.getQueryData(queryKey);
+        previousSnapshots.push({ queryKey, data });
+
+        // Optimistically update the cache
+        queryClient.setQueryData(queryKey, (old: ActionItem[] | undefined) => {
+          if (!old) return old;
+          return old.map(item =>
+            item.id === updatedItem.id
+              ? { ...item, ...updatedItem, updated_at: new Date().toISOString() }
+              : item
+          );
+        });
+      }
+
+      return { previousSnapshots };
+    },
+    onError: (error: any, _updatedItem, context) => {
+      console.error('Error updating action item:', error);
+      const message = error?.message || error?.details || 'Failed to update action item';
+      toast.error(message);
+      // Rollback all caches
+      if (context?.previousSnapshots) {
+        for (const { queryKey, data } of context.previousSnapshots) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      }
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['action_items'] });
       toast.success('Action item updated successfully');
     },
-    onError: (error) => {
-      console.error('Error updating action item:', error);
-      toast.error('Failed to update action item');
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['action_items'] });
     },
   });
 
-  // Delete action item
+  // Delete action item — with optimistic updates
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -176,17 +256,42 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
 
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['action_items'] });
-      toast.success('Action item deleted successfully');
+    onMutate: async (deletedId) => {
+      await queryClient.cancelQueries({ queryKey: ['action_items'] });
+
+      const queryKeys = getActionItemsQueryKeys();
+      const previousSnapshots: { queryKey: readonly unknown[]; data: unknown }[] = [];
+
+      for (const queryKey of queryKeys) {
+        const data = queryClient.getQueryData(queryKey);
+        previousSnapshots.push({ queryKey, data });
+
+        queryClient.setQueryData(queryKey, (old: ActionItem[] | undefined) => {
+          if (!old) return old;
+          return old.filter(item => item.id !== deletedId);
+        });
+      }
+
+      return { previousSnapshots };
     },
-    onError: (error) => {
+    onError: (error, _deletedId, context) => {
       console.error('Error deleting action item:', error);
       toast.error('Failed to delete action item');
+      if (context?.previousSnapshots) {
+        for (const { queryKey, data } of context.previousSnapshots) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success('Action item deleted successfully');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['action_items'] });
     },
   });
 
-  // Bulk update status
+  // Bulk update status — with optimistic updates
   const bulkUpdateStatusMutation = useMutation({
     mutationFn: async ({ ids, status }: { ids: string[]; status: ActionItemStatus }) => {
       const { error } = await supabase
@@ -196,17 +301,47 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
 
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['action_items'] });
-      toast.success('Action items updated successfully');
+    onMutate: async ({ ids, status }) => {
+      await queryClient.cancelQueries({ queryKey: ['action_items'] });
+
+      const queryKeys = getActionItemsQueryKeys();
+      const previousSnapshots: { queryKey: readonly unknown[]; data: unknown }[] = [];
+
+      for (const queryKey of queryKeys) {
+        const data = queryClient.getQueryData(queryKey);
+        previousSnapshots.push({ queryKey, data });
+
+        queryClient.setQueryData(queryKey, (old: ActionItem[] | undefined) => {
+          if (!old) return old;
+          const idSet = new Set(ids);
+          return old.map(item =>
+            idSet.has(item.id)
+              ? { ...item, status, updated_at: new Date().toISOString() }
+              : item
+          );
+        });
+      }
+
+      return { previousSnapshots };
     },
-    onError: (error) => {
+    onError: (error, _vars, context) => {
       console.error('Error updating action items:', error);
       toast.error('Failed to update action items');
+      if (context?.previousSnapshots) {
+        for (const { queryKey, data } of context.previousSnapshots) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success('Action items updated successfully');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['action_items'] });
     },
   });
 
-  // Bulk delete
+  // Bulk delete — with optimistic updates
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       const { error } = await supabase
@@ -216,13 +351,39 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
 
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['action_items'] });
-      toast.success('Action items deleted successfully');
+    onMutate: async (deletedIds) => {
+      await queryClient.cancelQueries({ queryKey: ['action_items'] });
+
+      const queryKeys = getActionItemsQueryKeys();
+      const previousSnapshots: { queryKey: readonly unknown[]; data: unknown }[] = [];
+
+      for (const queryKey of queryKeys) {
+        const data = queryClient.getQueryData(queryKey);
+        previousSnapshots.push({ queryKey, data });
+
+        queryClient.setQueryData(queryKey, (old: ActionItem[] | undefined) => {
+          if (!old) return old;
+          const idSet = new Set(deletedIds);
+          return old.filter(item => !idSet.has(item.id));
+        });
+      }
+
+      return { previousSnapshots };
     },
-    onError: (error) => {
+    onError: (error, _ids, context) => {
       console.error('Error deleting action items:', error);
       toast.error('Failed to delete action items');
+      if (context?.previousSnapshots) {
+        for (const { queryKey, data } of context.previousSnapshots) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success('Action items deleted successfully');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['action_items'] });
     },
   });
 
@@ -236,7 +397,7 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'action_items' },
         () => {
-          refetch();
+          queryClient.invalidateQueries({ queryKey: ['action_items'] });
         }
       )
       .subscribe();
@@ -244,7 +405,7 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, refetch]);
+  }, [user, queryClient]);
 
   return {
     actionItems,
@@ -253,7 +414,6 @@ export function useActionItems(initialFilters?: Partial<ActionItemFilters>) {
     filters,
     setFilters,
     updateFilter: (key: keyof ActionItemFilters, value: string | boolean) => {
-      // Handle showArchived boolean conversion
       if (key === 'showArchived') {
         const boolValue = typeof value === 'boolean' ? value : value === 'true';
         setFilters((prev) => ({ ...prev, [key]: boolValue }));

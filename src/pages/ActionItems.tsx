@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Plus, Search, Trash2, CheckCircle, X, List, LayoutGrid, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { useActionItems, ActionItem, ActionItemStatus, ActionItemPriority, CreateActionItemInput } from '@/hooks/useActionItems';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { ActionItemsTable } from '@/components/ActionItemsTable';
 import { ActionItemsKanban } from '@/components/ActionItemsKanban';
 import { ActionItemsCalendar } from '@/components/ActionItemsCalendar';
@@ -15,6 +16,7 @@ import { ActionItemModal } from '@/components/ActionItemModal';
 import { useAllUsers } from '@/hooks/useUserDisplayNames';
 import { useActionItemColumnPreferences } from '@/hooks/useActionItemColumnPreferences';
 import { Badge } from '@/components/ui/badge';
+import { useCRUDAudit } from '@/hooks/useCRUDAudit';
 type ViewMode = 'list' | 'kanban' | 'calendar';
 export default function ActionItems() {
   const {
@@ -39,6 +41,7 @@ export default function ActionItems() {
     columnWidths,
     updateColumnWidth
   } = useActionItemColumnPreferences();
+  const { logCreate, logUpdate, logDelete, logBulkUpdate, logBulkDelete } = useCRUDAudit();
 
   // URL params for highlight from notifications
   const [searchParams, setSearchParams] = useSearchParams();
@@ -62,27 +65,60 @@ export default function ActionItems() {
   const [editingItem, setEditingItem] = useState<ActionItem | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Handle highlight from notification click
+  // Helper to check if string is a UUID
+  const isUuid = useCallback((str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str), []);
+
+  // Handle highlight from notification/email click
   useEffect(() => {
-    if (highlightId && !isLoading && !highlightProcessed) {
-      const item = actionItems.find(a => a.id === highlightId);
-      if (item) {
-        setEditingItem(item);
+    if (!highlightId || highlightProcessed) return;
+    if (isLoading) return; // wait for initial load
+
+    const findAndOpenItem = async () => {
+      // 1. Try local list first (by id or title for backward compat)
+      let found = actionItems.find(a => a.id === highlightId || a.title === highlightId);
+
+      // 2. If not in local list, query DB directly
+      if (!found) {
+        try {
+          if (isUuid(highlightId)) {
+            const { data } = await supabase
+              .from('action_items')
+              .select('*')
+              .eq('id', highlightId)
+              .maybeSingle();
+            if (data) found = data as unknown as ActionItem;
+          }
+          // Fallback: title-based lookup (old email links)
+          if (!found) {
+            const { data } = await supabase
+              .from('action_items')
+              .select('*')
+              .ilike('title', highlightId)
+              .limit(1)
+              .maybeSingle();
+            if (data) found = data as unknown as ActionItem;
+          }
+        } catch (err) {
+          console.error('Error fetching highlighted action item:', err);
+        }
+      }
+
+      if (found) {
+        setEditingItem(found);
         setModalOpen(true);
-      } else if (actionItems.length > 0) {
-        // Item not found - show toast
+      } else {
         toast({
           title: "Item not found",
           description: "The action item you're looking for may have been deleted."
         });
       }
-      // Clear the highlight param and mark as processed
-      setSearchParams({}, {
-        replace: true
-      });
+
+      setSearchParams({}, { replace: true });
       setHighlightProcessed(true);
-    }
-  }, [highlightId, actionItems, isLoading, setSearchParams, highlightProcessed, toast]);
+    };
+
+    findAndOpenItem();
+  }, [highlightId, actionItems, isLoading, highlightProcessed, isUuid, setSearchParams, toast]);
 
   // Reset processed state when highlightId changes
   useEffect(() => {
@@ -93,6 +129,11 @@ export default function ActionItems() {
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const hasActiveFilters = filters.module_type !== 'all' || filters.priority !== 'all' || filters.status !== 'all' || filters.assigned_to !== 'all' || filters.search !== '';
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters.module_type, filters.priority, filters.status, filters.assigned_to, filters.search, filters.showArchived]);
 
   // Sort action items
   const sortedActionItems = [...actionItems].sort((a, b) => {
@@ -136,7 +177,9 @@ export default function ActionItems() {
     setModalOpen(true);
   };
   const handleEdit = (item: ActionItem) => {
-    setEditingItem(item);
+    // Look up fresh data from current actionItems to avoid stale modal
+    const freshItem = actionItems.find(a => a.id === item.id) || item;
+    setEditingItem(freshItem);
     setModalOpen(true);
   };
   const handleSave = async (data: CreateActionItemInput) => {
@@ -145,8 +188,19 @@ export default function ActionItems() {
         id: editingItem.id,
         ...data
       });
+      logUpdate('action_items', editingItem.id, data, {
+        title: editingItem.title,
+        status: editingItem.status,
+        priority: editingItem.priority,
+        assigned_to: editingItem.assigned_to,
+        due_date: editingItem.due_date,
+        description: editingItem.description,
+      });
     } else {
-      await createActionItem(data);
+      const result = await createActionItem(data);
+      if (result) {
+        logCreate('action_items', result.id || 'unknown', { title: data.title, status: data.status, priority: data.priority });
+      }
     }
     setEditingItem(null);
   };
@@ -156,44 +210,63 @@ export default function ActionItems() {
   };
   const confirmDelete = async () => {
     if (itemToDelete) {
+      const item = actionItems.find(a => a.id === itemToDelete);
       await deleteActionItem(itemToDelete);
+      logDelete('action_items', itemToDelete, item ? { title: item.title, status: item.status, priority: item.priority } : undefined);
       setItemToDelete(null);
     }
     setDeleteDialogOpen(false);
   };
   const handleStatusChange = async (id: string, status: ActionItemStatus) => {
-    await updateActionItem({
-      id,
-      status
-    });
+    try {
+      const item = actionItems.find(a => a.id === id);
+      await updateActionItem({ id, status });
+      logUpdate('action_items', id, { status }, { title: item?.title, status: item?.status });
+      if (status === 'Completed' && !filters.showArchived) {
+        toast({ title: "Item completed", description: "Moved to the Completed view." });
+      }
+    } catch (error) {
+      console.error('Failed to update status:', error);
+    }
   };
   const handlePriorityChange = async (id: string, priority: ActionItemPriority) => {
-    await updateActionItem({
-      id,
-      priority
-    });
+    try {
+      const item = actionItems.find(a => a.id === id);
+      await updateActionItem({ id, priority });
+      logUpdate('action_items', id, { priority }, { title: item?.title, priority: item?.priority });
+    } catch (error) {
+      console.error('Failed to update priority:', error);
+    }
   };
   const handleAssignedToChange = async (id: string, userId: string | null) => {
-    await updateActionItem({
-      id,
-      assigned_to: userId
-    });
+    try {
+      const item = actionItems.find(a => a.id === id);
+      await updateActionItem({ id, assigned_to: userId });
+      logUpdate('action_items', id, { assigned_to: userId }, { title: item?.title, assigned_to: item?.assigned_to });
+    } catch (error) {
+      console.error('Failed to update assignee:', error);
+    }
   };
   const handleDueDateChange = async (id: string, date: string | null) => {
-    await updateActionItem({
-      id,
-      due_date: date
-    });
+    try {
+      const item = actionItems.find(a => a.id === id);
+      await updateActionItem({ id, due_date: date });
+      logUpdate('action_items', id, { due_date: date }, { title: item?.title, due_date: item?.due_date });
+    } catch (error) {
+      console.error('Failed to update due date:', error);
+    }
   };
   const handleBulkComplete = async () => {
     await bulkUpdateStatus({
       ids: selectedIds,
       status: 'Completed'
     });
+    logBulkUpdate('action_items', selectedIds.length, { status: 'Completed' });
     setSelectedIds([]);
   };
   const handleBulkDelete = async () => {
     await bulkDelete(selectedIds);
+    logBulkDelete('action_items', selectedIds.length, selectedIds);
     setSelectedIds([]);
     setBulkDeleteDialogOpen(false);
   };

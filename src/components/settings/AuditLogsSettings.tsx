@@ -9,7 +9,7 @@ import { Download, Activity, Undo, Eye, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { RevertConfirmDialog } from "@/components/feeds/RevertConfirmDialog";
 import { StandardPagination } from "@/components/shared/StandardPagination";
-import { AuditLogFilters } from "./audit/AuditLogFilters";
+import { AuditLogFilters, ModuleFilter } from "./audit/AuditLogFilters";
 import { AuditLogDetailDialog } from "./audit/AuditLogDetailDialog";
 import { AuditLogStats } from "./audit/AuditLogStats";
 import {
@@ -18,7 +18,7 @@ import {
   getStatsFromLogs, formatFieldValue
 } from "./audit/auditLogUtils";
 
-type ValidTableName = 'contacts' | 'deals' | 'leads';
+type ValidTableName = 'contacts' | 'deals' | 'leads' | 'action_items';
 
 const badgeColorClasses: Record<string, string> = {
   green: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -48,6 +48,7 @@ const AuditLogsSettings = () => {
   const [category, setCategory] = useState<FilterCategory>('all_except_auth');
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+  const [moduleFilter, setModuleFilter] = useState<ModuleFilter>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [revertDialogOpen, setRevertDialogOpen] = useState(false);
@@ -112,6 +113,14 @@ const AuditLogsSettings = () => {
   const filteredLogs = useMemo(() => {
     let result = filterByCategory(logs, category);
 
+    // Module filter
+    if (moduleFilter !== 'all') {
+      result = result.filter(log =>
+        log.resource_type === moduleFilter ||
+        log.details?.module?.toLowerCase() === moduleFilter
+      );
+    }
+
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(log =>
@@ -132,14 +141,14 @@ const AuditLogsSettings = () => {
     }
 
     return result;
-  }, [logs, category, searchTerm, dateFrom, dateTo, userNames]);
+  }, [logs, category, moduleFilter, searchTerm, dateFrom, dateTo, userNames]);
 
   // Pagination
   const totalPages = Math.ceil(filteredLogs.length / ITEMS_PER_PAGE);
   const paginatedLogs = filteredLogs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   // Reset page on filter change
-  useEffect(() => { setCurrentPage(1); }, [category, searchTerm, dateFrom, dateTo]);
+  useEffect(() => { setCurrentPage(1); }, [category, moduleFilter, searchTerm, dateFrom, dateTo]);
 
   // Stats
   const stats = useMemo(() => getStatsFromLogs(filteredLogs), [filteredLogs]);
@@ -152,10 +161,10 @@ const AuditLogsSettings = () => {
 
   const canRevert = (log: AuditLog) =>
     ['CREATE', 'UPDATE', 'DELETE'].includes(log.action) &&
-    ['contacts', 'deals', 'leads'].includes(log.resource_type) &&
+    ['contacts', 'deals', 'leads', 'action_items'].includes(log.resource_type) &&
     log.resource_id && log.details;
 
-  const isValidTableName = (t: string): t is ValidTableName => ['contacts', 'deals', 'leads'].includes(t);
+  const isValidTableName = (t: string): t is ValidTableName => ['contacts', 'deals', 'leads', 'action_items'].includes(t);
 
   const handleRevertClick = (log: AuditLog) => { setSelectedLog(log); setRevertDialogOpen(true); };
 
@@ -268,6 +277,8 @@ const AuditLogsSettings = () => {
             onSearchChange={setSearchTerm}
             category={category}
             onCategoryChange={setCategory}
+            moduleFilter={moduleFilter}
+            onModuleFilterChange={setModuleFilter}
             dateFrom={dateFrom}
             dateTo={dateTo}
             onDateFromChange={setDateFrom}

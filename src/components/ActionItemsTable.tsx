@@ -72,9 +72,9 @@ const statusConfig: Record<ActionItemStatus, {
   }
 };
 const moduleLabels: Record<string, string> = {
-  deals: 'Deal',
-  leads: 'Lead',
-  contacts: 'Contact'
+  accounts: 'Account',
+  contacts: 'Contact',
+  deals: 'Deal'
 };
 export function ActionItemsTable({
   actionItems,
@@ -185,16 +185,16 @@ export function ActionItemsTable({
           setSelectedDeal(data as Deal);
           setDealModalOpen(true);
         }
-      } else if (normalizedType === 'lead' || normalizedType === 'leads') {
-        // Leads are now deals at Lead stage - open as deal
+      } else if (normalizedType === 'account' || normalizedType === 'accounts') {
+        // Account records - just show a toast for now since no account modal exists in this context
         const { data } = await supabase
-          .from('deals')
+          .from('accounts')
           .select('*')
           .eq('id', moduleId)
           .maybeSingle();
         if (data) {
-          setSelectedDeal(data as Deal);
-          setDealModalOpen(true);
+          // Navigate or show account - for now just log
+          console.log('Account clicked:', data);
         }
       } else if (normalizedType === 'contact' || normalizedType === 'contacts') {
         const { data } = await supabase
@@ -461,7 +461,7 @@ export function ActionItemsTable({
                             {(() => {
                               const t = item.module_type.toLowerCase();
                               if (t === 'deal' || t === 'deals') return <Handshake className="h-4 w-4" />;
-                              if (t === 'lead' || t === 'leads') return <UserPlus className="h-4 w-4" />;
+                              if (t === 'account' || t === 'accounts') return <UserPlus className="h-4 w-4" />;
                               if (t === 'contact' || t === 'contacts') return <Users className="h-4 w-4" />;
                               return <span className="text-xs">{t[0]?.toUpperCase()}</span>;
                             })()}

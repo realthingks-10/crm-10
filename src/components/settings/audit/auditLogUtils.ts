@@ -73,15 +73,15 @@ export const getRecordName = (log: AuditLog): string => {
   
   // From record_data (CREATE)
   if (d.record_data) {
-    return d.record_data.deal_name || d.record_data.lead_name || d.record_data.contact_name || d.record_data.account_name || d.record_data.title || '';
+    return d.record_data.deal_name || d.record_data.project_name || d.record_data.lead_name || d.record_data.contact_name || d.record_data.account_name || d.record_data.title || '';
   }
   // From old_data (UPDATE/DELETE)
   if (d.old_data) {
-    return d.old_data.deal_name || d.old_data.lead_name || d.old_data.contact_name || d.old_data.account_name || d.old_data.title || '';
+    return d.old_data.deal_name || d.old_data.project_name || d.old_data.lead_name || d.old_data.contact_name || d.old_data.account_name || d.old_data.title || '';
   }
   // From deleted_data (DELETE)
   if (d.deleted_data) {
-    return d.deleted_data.deal_name || d.deleted_data.lead_name || d.deleted_data.contact_name || d.deleted_data.account_name || d.deleted_data.title || '';
+    return d.deleted_data.deal_name || d.deleted_data.project_name || d.deleted_data.lead_name || d.deleted_data.contact_name || d.deleted_data.account_name || d.deleted_data.title || '';
   }
   return '';
 };
@@ -117,13 +117,32 @@ export const generateSummary = (log: AuditLog): string => {
       if (d?.field_changes) {
         const changes = filterNoiseFieldChanges(d.field_changes);
         const keys = Object.keys(changes);
-        if (keys.length === 0) return name ? `Updated ${module.replace(/s$/, '')} "${name}"` : `Updated ${module.replace(/s$/, '')} record`;
+        if (keys.length === 0) {
+          // Fall back to updated_fields keys when field_changes is empty
+          if (d.updated_fields) {
+            const updatedKeys = Object.keys(d.updated_fields).filter(k => !['id', 'created_at', 'updated_at', 'modified_at', 'modified_by', 'created_by'].includes(k));
+            if (updatedKeys.length === 1) {
+              return `Updated "${name || 'record'}" — ${formatFieldName(updatedKeys[0])}: ${formatFieldValue(d.updated_fields[updatedKeys[0]])}`;
+            }
+            if (updatedKeys.length > 1) {
+              return `Updated "${name || 'record'}" — ${updatedKeys.length} fields: ${updatedKeys.map(formatFieldName).join(', ')}`;
+            }
+          }
+          return name ? `Updated ${module.replace(/s$/, '')} "${name}"` : `Updated ${module.replace(/s$/, '')} record`;
+        }
         if (keys.length === 1) {
           const field = keys[0];
           const change = changes[field];
           return `Updated "${name || 'record'}" — ${formatFieldName(field)}: ${formatFieldValue(change.old)} → ${formatFieldValue(change.new)}`;
         }
         return `Updated "${name || 'record'}" — ${keys.length} fields changed`;
+      }
+      // No field_changes at all — check updated_fields
+      if (d?.updated_fields) {
+        const updatedKeys = Object.keys(d.updated_fields).filter(k => !['id', 'created_at', 'updated_at', 'modified_at', 'modified_by', 'created_by'].includes(k));
+        if (updatedKeys.length > 0) {
+          return `Updated "${name || 'record'}" — ${updatedKeys.map(formatFieldName).join(', ')}`;
+        }
       }
       return name ? `Updated ${module.replace(/s$/, '')} "${name}"` : `Updated record`;
     }
