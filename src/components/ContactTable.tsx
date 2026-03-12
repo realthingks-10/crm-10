@@ -218,8 +218,10 @@ export const ContactTable = ({
         created_by: user.id,
       };
       
-      const { error } = await supabase.from('leads').insert([leadData]);
+      const { data: insertedLead, error } = await supabase.from('leads').insert([leadData]).select().single();
       if (error) throw error;
+      
+      await logCreate('leads', insertedLead?.id || '', { ...leadData, converted_from_contact: contact.contact_name, contact_id: contact.id });
       
       toast({
         title: "Success",
