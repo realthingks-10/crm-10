@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
+import { useSecurityAudit } from "@/hooks/useSecurityAudit";
 import type { Tables } from "@/integrations/supabase/types";
 
 export type Campaign = Tables<"campaigns">;
@@ -26,6 +27,7 @@ export interface CampaignFormData {
 export function useCampaigns() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { logSecurityEvent } = useSecurityAudit();
 
   const campaignsQuery = useQuery({
     queryKey: ["campaigns"],
@@ -139,7 +141,8 @@ export function useCampaigns() {
         .eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_: any, id: string) => {
+      logSecurityEvent('ARCHIVE', 'campaigns', id, { operation: 'ARCHIVE', status: 'Success' });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["archived-campaigns"] });
       toast({ title: "Campaign archived" });
@@ -157,7 +160,8 @@ export function useCampaigns() {
         .eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_: any, id: string) => {
+      logSecurityEvent('RESTORE', 'campaigns', id, { operation: 'RESTORE', status: 'Success' });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["archived-campaigns"] });
       toast({ title: "Campaign restored" });

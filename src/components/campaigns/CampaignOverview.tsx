@@ -11,7 +11,7 @@ import {
 import { format } from "date-fns";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  AreaChart, Area, CartesianGrid
+  AreaChart, Area, CartesianGrid, Cell
 } from "recharts";
 
 interface MARTComplete {
@@ -47,11 +47,32 @@ const stageColors: Record<string, string> = {
   "Converted": "#6366f1",
 };
 
+const STAT_ICON_BG: Record<string, string> = {
+  Accounts: "bg-blue-100 dark:bg-blue-900/30",
+  Contacts: "bg-green-100 dark:bg-green-900/30",
+  Emails: "bg-indigo-100 dark:bg-indigo-900/30",
+  Calls: "bg-orange-100 dark:bg-orange-900/30",
+  LinkedIn: "bg-purple-100 dark:bg-purple-900/30",
+  Responses: "bg-emerald-100 dark:bg-emerald-900/30",
+  Deals: "bg-pink-100 dark:bg-pink-900/30",
+  MART: "bg-amber-100 dark:bg-amber-900/30",
+};
+
+const STAT_ICON_COLOR: Record<string, string> = {
+  Accounts: "text-blue-600 dark:text-blue-400",
+  Contacts: "text-green-600 dark:text-green-400",
+  Emails: "text-indigo-600 dark:text-indigo-400",
+  Calls: "text-orange-600 dark:text-orange-400",
+  LinkedIn: "text-purple-600 dark:text-purple-400",
+  Responses: "text-emerald-600 dark:text-emerald-400",
+  Deals: "text-pink-600 dark:text-pink-400",
+  MART: "text-amber-600 dark:text-amber-400",
+};
+
 export function CampaignOverview({
   campaign, accounts, contacts, communications,
   isMARTComplete, martProgress, onTabChange
 }: Props) {
-  // Fetch deals linked to this campaign
   const { data: deals = [] } = useQuery({
     queryKey: ["campaign-deals-overview", campaign.id],
     queryFn: async () => {
@@ -71,7 +92,6 @@ export function CampaignOverview({
     c.stage === "Responded" || c.stage === "Qualified" || c.stage === "Converted"
   ).length;
 
-  // Contact stage breakdown for chart
   const stageData = useMemo(() => {
     const counts: Record<string, number> = {};
     stageOrder.forEach(s => counts[s] = 0);
@@ -83,7 +103,6 @@ export function CampaignOverview({
     return stageOrder.map(s => ({ stage: s, count: counts[s], fill: stageColors[s] }));
   }, [contacts]);
 
-  // Outreach timeline (group by week)
   const timelineData = useMemo(() => {
     if (communications.length === 0) return [];
     const weekMap: Record<string, number> = {};
@@ -106,10 +125,10 @@ export function CampaignOverview({
     label: string; value: number | string; icon: any; onClick?: () => void; subtitle?: string;
   }) => (
     <Card
-      className={`transition-all ${onClick ? "cursor-pointer hover:shadow-md hover:border-primary/30 group" : ""}`}
+      className={`border transition-all ${onClick ? "cursor-pointer hover:shadow-md hover:border-primary/30 group" : ""}`}
       onClick={onClick}
     >
-      <CardContent className="p-4">
+      <CardContent className="p-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-muted-foreground">{label}</p>
@@ -117,7 +136,9 @@ export function CampaignOverview({
             {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
           </div>
           <div className="flex items-center gap-1">
-            <Icon className="h-5 w-5 text-muted-foreground" />
+            <div className={`h-8 w-8 rounded-lg ${STAT_ICON_BG[label] || "bg-muted"} flex items-center justify-center`}>
+              <Icon className={`h-4 w-4 ${STAT_ICON_COLOR[label] || "text-muted-foreground"}`} />
+            </div>
             {onClick && <ArrowRight className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />}
           </div>
         </div>
@@ -126,9 +147,9 @@ export function CampaignOverview({
   );
 
   return (
-    <div className="space-y-4">
-      {/* All 8 stats in one row */}
-      <div className="grid grid-cols-4 xl:grid-cols-8 gap-3">
+    <div className="space-y-3">
+      {/* All 8 stats */}
+      <div className="grid grid-cols-4 xl:grid-cols-8 gap-2">
         <StatCard label="Accounts" value={accounts.length} icon={Building2} onClick={() => onTabChange("accounts-contacts")} />
         <StatCard label="Contacts" value={contacts.length} icon={Users} onClick={() => onTabChange("accounts-contacts")} />
         <StatCard label="Emails" value={emailCount} icon={MessageSquare} onClick={() => onTabChange("outreach")} />
@@ -139,9 +160,9 @@ export function CampaignOverview({
         <StatCard label="MART" value={`${martProgress}/4`} icon={Target} onClick={() => onTabChange("mart")} subtitle={`${Math.round((martProgress / 4) * 100)}%`} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Contact Stage Funnel */}
-        <Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Contact Stage Funnel - FIXED: using Cell instead of rect */}
+        <Card className="border">
           <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2 cursor-pointer hover:text-primary transition-colors" onClick={() => onTabChange("accounts-contacts")}>
               <Users className="h-4 w-4" /> Contact Funnel <ArrowRight className="h-3 w-3 ml-auto" />
@@ -158,7 +179,7 @@ export function CampaignOverview({
                   <Tooltip formatter={(v: number) => [v, "Contacts"]} />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={16}>
                     {stageData.map((entry, i) => (
-                      <rect key={i} fill={entry.fill} />
+                      <Cell key={i} fill={entry.fill} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -167,8 +188,8 @@ export function CampaignOverview({
           </CardContent>
         </Card>
 
-        {/* MART Status — clickable */}
-        <Card className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all" onClick={() => onTabChange("mart")}>
+        {/* MART Status */}
+        <Card className="border cursor-pointer hover:shadow-md hover:border-primary/30 transition-all" onClick={() => onTabChange("mart")}>
           <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Target className="h-4 w-4" /> MART Status <ArrowRight className="h-3 w-3 ml-auto" />
@@ -190,8 +211,8 @@ export function CampaignOverview({
           </CardContent>
         </Card>
 
-        {/* Recent Activity — clickable items */}
-        <Card>
+        {/* Recent Activity */}
+        <Card className="border">
           <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2 cursor-pointer hover:text-primary transition-colors" onClick={() => onTabChange("outreach")}>
               <MessageSquare className="h-4 w-4" /> Recent Activity <ArrowRight className="h-3 w-3 ml-auto" />
@@ -221,9 +242,9 @@ export function CampaignOverview({
         </Card>
       </div>
 
-      {/* Outreach Timeline */}
-      {timelineData.length > 1 && (
-        <Card>
+      {/* Outreach Timeline - show even with 1 data point */}
+      {timelineData.length >= 1 && (
+        <Card className="border">
           <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <BarChart3 className="h-4 w-4" /> Outreach Activity Timeline
@@ -243,9 +264,9 @@ export function CampaignOverview({
         </Card>
       )}
 
-      {/* Details, Description, Goal, Notes — compact layout */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
+      {/* Details, Description, Goal, Notes */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card className="border">
           <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4" /> Details</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Type</span><span>{campaign.campaign_type}</span></div>
@@ -256,7 +277,7 @@ export function CampaignOverview({
         </Card>
 
         {(campaign.description || campaign.goal) && (
-          <Card>
+          <Card className="border">
             <CardContent className="space-y-3 pt-4 text-sm">
               {campaign.description && (
                 <div>
@@ -275,7 +296,7 @@ export function CampaignOverview({
         )}
 
         {campaign.notes && (
-          <Card>
+          <Card className="border">
             <CardContent className="pt-4">
               <p className="font-medium text-sm mb-1">Notes</p>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{campaign.notes.replace(/\[timezone:.+?\]\s*/g, "").trim()}</p>
