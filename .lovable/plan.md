@@ -1,75 +1,144 @@
 
 
-# MART Strategy — Complete UI/UX Overhaul & Missing Features
+## Campaign Module — Full Audit & Improvement Plan
 
-## Problems Identified
-
-### Layout & Space Issues
-1. **Message section uses full width but content is sparse** — Email templates, call scripts, LinkedIn messages, and materials are stacked vertically in single-column cards with action buttons pushed to the far right, creating vast empty space in between
-2. **Each MART section is a separate Card** — Creates excessive vertical spacing with redundant borders
-3. **Audience section is single-column** — Job titles, departments, seniority, industries, company sizes are stacked vertically, wasting horizontal space
-4. **Region section** — Region cards use `grid-cols-2` which is fine, but the add/edit form is also single-column when it could be more compact
-5. **Timing section** — Start/end dates use large `text-lg` font and occupy excessive vertical space for simple read-only info
-6. **LinkedIn message body overflows** — Long text shown in `line-clamp-2` but the progress bar stretches full width creating visual noise
-
-### Missing Features
-1. **No sort/reorder for email templates** — Users cannot prioritize template order (Initial → Follow-up → Final sequence)
-2. **No preview mode for email templates** — Users must open edit modal to read full content
-3. **No "Copy to Clipboard" for email templates** — Only LinkedIn messages have copy; emails and scripts don't
-4. **No audience segment filter on Message cards** — Cannot quickly see templates by segment
-5. **No indication of which segment each content targets in the collapsed header summary**
-6. **Materials section has no drag-and-drop or reorder** — Minor, acceptable
-7. **No "Expand/Preview" for call scripts** — Must open edit modal to review talking points and objections
-8. **Audience section has no "clear all" button**
-9. **Timing section cannot edit dates inline** — Only shows a warning to use "Edit" button, which opens the full campaign modal
-
-### Logic Issues
-1. **LinkedIn duplicate function is missing** — `duplicateEmailTemplate` exists but LinkedIn cards show `confirmDeleteEmailTemplate` for delete, yet no duplicate button exists (Copy button copies text to clipboard, not duplicate the record)
-2. **No validation feedback when saving empty audience** — Save button is disabled but no explanation shown
-3. **Content counts in MART progress header don't include materials count in the summary text** — `getContentSummary` for "message" includes materials but the collapsed header `·` summary only shows when there's content
+### Summary
+After deep-diving into every Campaign component (Dashboard, Detail, Overview, MART Strategy, Accounts & Contacts, Communications/Outreach, Tasks, Analytics), here are all bugs, layout issues, and improvements organized by priority.
 
 ---
 
-## Implementation Plan
+### 1. GLOBAL: Square Badges (Applies to Entire App)
 
-### 1. Compact MART Strategy Layout (CampaignMARTStrategy.tsx)
-- Reduce `space-y-4` to `space-y-3` between section cards
-- Make progress card more compact: combine progress bar + section pills into a single tighter row
-- Remove redundant `CardHeader` padding — use `py-2` instead of `py-3`
-
-### 2. Redesign Message Section Layout (CampaignMARTMessage.tsx) — Major
-- **Use a 2-column grid** for email templates and call scripts when there are 2+ items: `grid grid-cols-1 lg:grid-cols-2 gap-3`
-- **Add "Copy" button to email template cards** (copy subject + body to clipboard)
-- **Add expand/collapse for call script details** — Show talking points, questions, objections inline on click without opening modal
-- **Truncate LinkedIn message body** to 2 lines with proper `line-clamp-2` and remove full-width progress bar (show char count as badge instead)
-- **Add "Duplicate" button to LinkedIn template cards** (currently missing, only Copy exists)
-- **Compact the section headers** — Reduce spacing between Email/Script/LinkedIn/Materials sections from `space-y-6` to `space-y-4`
-- **Materials table** — Make more compact, reduce padding
-
-### 3. Redesign Audience Section (CampaignMARTAudience.tsx)
-- **Use 2-column grid layout**: Left column = Job Titles + Industries (tag inputs), Right column = Departments + Seniority + Company Sizes (checkboxes)
-- **Add "Clear All" button** next to Save
-- **Make summary banner more prominent** — Move it above the Save button as a colored callout
-- Reduce `space-y-5` to `space-y-3`
-
-### 4. Redesign Timing Section (CampaignMARTTiming.tsx)
-- **Compact layout**: Put start date, end date, days remaining, and progress bar in a single horizontal row using `grid grid-cols-4`
-- Reduce date font from `text-lg` to `text-sm font-medium`
-- Move timing note to the right of the date/progress section in a 2-column layout
-- Keep warning banner for missing dates
-
-### 5. Region Section Minor Tweaks (CampaignMARTRegion.tsx)
-- Already uses 2-column grid — no major changes needed
-- Make the add/edit form inline more compact (reduce padding)
+**File: `src/components/ui/badge.tsx`**
+- Change `rounded-full` to `rounded-md` in the badge variants to make all badges square/rectangular across the entire app
 
 ---
 
-## Files to Edit
+### 2. LAYOUT: Reduce Wasted Space
+
+**File: `src/pages/CampaignDetail.tsx`**
+- Reduce `px-6 pt-4 pb-6` padding on tab content area to `px-4 pt-3 pb-4`
+- Tab content uses excessive top/bottom margins
+
+**File: `src/components/campaigns/CampaignDashboard.tsx`**
+- Reduce `p-4 space-y-4` to `p-3 space-y-3`
+- Stat cards grid: reduce `gap-3` to `gap-2`
+- Charts row: reduce `gap-4` to `gap-3`
+- Table max-height `320px` is too short on large screens — change to `400px`
+
+**File: `src/components/campaigns/CampaignOverview.tsx`**
+- StatCard padding `p-4` is excessive — reduce to `p-3`
+- Stats grid `gap-3` to `gap-2`
+- `space-y-4` to `space-y-3`
+
+**File: `src/components/campaigns/CampaignAnalytics.tsx`**
+- Stats grid `gap-4` to `gap-3`, stat card padding `p-4` to `p-3`
+- `space-y-6` is too loose — change to `space-y-4`
+
+**File: `src/components/campaigns/CampaignCommunications.tsx`**
+- CardHeader too wide — reduce internal spacing
+- `space-y-4` to `space-y-3`
+
+**File: `src/components/campaigns/CampaignActionItems.tsx`**
+- `space-y-4` to `space-y-3`
+
+**File: `src/components/campaigns/CampaignMARTStrategy.tsx`**
+- `space-y-3` is fine, but Card padding can be tightened
+
+**File: `src/components/campaigns/CampaignAccountsContacts.tsx`**
+- CardHeader flex-wrap causes unnecessary vertical expansion
+
+---
+
+### 3. ADD COLORS & VISUAL POLISH
+
+**File: `src/components/campaigns/CampaignDashboard.tsx`**
+- Add colored left borders to stat cards (green for Active, blue for Completed, yellow for Paused, gray for Draft)
+- Add subtle colored backgrounds to the stat icons
+
+**File: `src/components/campaigns/CampaignOverview.tsx`**
+- Add colored icon backgrounds to StatCards (blue for Accounts, green for Contacts, purple for LinkedIn, etc.)
+- Color-code the Contact Funnel bars properly (currently using `rect` which doesn't work with recharts — this is a rendering bug, fix to use `Cell` component)
+
+**File: `src/components/campaigns/CampaignAnalytics.tsx`**
+- Add distinct icon background colors per stat (blue for Accounts, green for Contacts, orange for Calls, purple for LinkedIn, etc.) instead of uniform `bg-primary/10`
+- Add colored funnel bars — gradient from primary to lighter shades as funnel narrows
+
+**File: `src/components/campaigns/CampaignDetail.tsx`**
+- Add colored border-left on campaign status banner
+- Add subtle background colors to tabs
+
+**File: `src/components/campaigns/CampaignMARTStrategy.tsx`**
+- Add colored left-border on each MART section card (green when done, gray when not)
+
+---
+
+### 4. BUGS FOUND
+
+| # | Bug | Location | Fix |
+|---|-----|----------|-----|
+| 1 | **Contact Funnel chart uses `<rect>` instead of `<Cell>`** — bars don't render colors | `CampaignOverview.tsx` line 160 | Replace `<rect>` with recharts `<Cell>` component |
+| 2 | **Duplicate utility functions** — `deriveAccountStatus`, `recomputeAccountStatus`, `parseJsonArr` are defined in both `campaignUtils.ts` AND `CampaignAccountsContacts.tsx` | `CampaignAccountsContacts.tsx` lines 66-98 | Import from `campaignUtils.ts` instead of redefining |
+| 3 | **Campaign clone navigates by UUID** but URLs use slugs | `Campaigns.tsx` line 222 | After clone, navigate to slug not UUID |
+| 4 | **CampaignActionItems: no audit logging** for create/delete/update | `CampaignActionItems.tsx` lines 104-143 | Add `useCRUDAudit` logging (consistent with earlier audit fix) |
+| 5 | **CampaignCommunications: no audit logging** for logging outreach | `CampaignCommunications.tsx` line 96 | Add audit log on communication create |
+| 6 | **Campaign delete/archive has no audit logging** | `useCampaigns.tsx` | Add audit log calls to archive/restore/delete mutations |
+| 7 | **Outreach tab missing `<Fragment>` key** — React list rendering issue | `CampaignCommunications.tsx` line 280 | Wrap `<>` with `<Fragment key={c.id}>` |
+
+---
+
+### 5. MISSING FEATURES TO IMPLEMENT (No "Soon" Labels Found, But Gaps Identified)
+
+| # | Feature | Location | What to Build |
+|---|---------|----------|---------------|
+| 1 | **Analytics: No charts/graphs** — only stats + funnel bar | `CampaignAnalytics.tsx` | Add: outreach timeline chart (area), channel breakdown pie chart, response rate trend |
+| 2 | **Analytics: No conversion rates** displayed | `CampaignAnalytics.tsx` | Add conversion rate percentages between funnel stages |
+| 3 | **Tasks: No "Assigned To" dropdown** when creating/editing | `CampaignActionItems.tsx` | Add assigned_to field using user dropdown in create/edit forms |
+| 4 | **Tasks: Edit modal missing description field** | `CampaignActionItems.tsx` line 370 | Add description textarea to edit form |
+| 5 | **Dashboard: No "Last Activity" or "Days Active"** per campaign | `CampaignDashboard.tsx` | Add last activity column to table |
+| 6 | **Overview: Outreach timeline only shows when >1 data point** | `CampaignOverview.tsx` line 225 | Show even with 1 data point |
+| 7 | **Accounts & Contacts: No bulk stage update** | `CampaignAccountsContacts.tsx` | Add bulk selection + stage update for contacts |
+| 8 | **Accounts & Contacts: No export** capability | `CampaignAccountsContacts.tsx` | Add CSV export for campaign contacts with stages |
+
+---
+
+### 6. COMPONENT BOUNDARIES (Add borders to all components)
+
+All Card components across the Campaign module need consistent `border` styling. Currently some cards use `shadow-none` without explicit borders, making them blend into the background.
+
+**Files to update:**
+- `CampaignDashboard.tsx` — add `border` class to all Cards
+- `CampaignOverview.tsx` — add `border` class to all Cards  
+- `CampaignAnalytics.tsx` — add `border` class to all Cards
+- `CampaignMARTStrategy.tsx` — already has borders (OK)
+- `CampaignActionItems.tsx` — already has borders (OK)
+- `CampaignCommunications.tsx` — already has borders (OK)
+
+---
+
+### Implementation Order
+
+1. **Badge shape change** (global, 1 file)
+2. **Layout tightening** (reduce padding/gaps across 8 files)
+3. **Add borders** to all cards
+4. **Add colors** (stat icons, card accents, funnel bars)
+5. **Fix bugs** (Contact Funnel rect, duplicate utils, clone nav, Fragment key)
+6. **Add audit logging** (campaign actions, task CRUD, communications)
+7. **Implement missing features** (Analytics charts, task assigned_to, bulk actions)
+
+### Files Modified
 
 | File | Changes |
 |------|---------|
-| `src/components/campaigns/CampaignMARTStrategy.tsx` | Compact spacing, tighter progress card |
-| `src/components/campaigns/CampaignMARTMessage.tsx` | 2-column grid for templates/scripts, add copy button to emails, add duplicate to LinkedIn, expand/collapse for scripts, compact char count display |
-| `src/components/campaigns/CampaignMARTAudience.tsx` | 2-column grid layout, clear all button |
-| `src/components/campaigns/CampaignMARTTiming.tsx` | Horizontal compact layout for dates/progress, 2-column with timing note |
+| `src/components/ui/badge.tsx` | `rounded-full` → `rounded-md` |
+| `src/pages/CampaignDetail.tsx` | Reduce padding |
+| `src/pages/Campaigns.tsx` | Fix clone navigation |
+| `src/components/campaigns/CampaignDashboard.tsx` | Layout, colors, borders |
+| `src/components/campaigns/CampaignOverview.tsx` | Layout, colors, fix funnel chart bug |
+| `src/components/campaigns/CampaignAnalytics.tsx` | Layout, colors, add charts |
+| `src/components/campaigns/CampaignCommunications.tsx` | Layout, fix Fragment key, audit logging |
+| `src/components/campaigns/CampaignActionItems.tsx` | Layout, add assigned_to field, audit logging |
+| `src/components/campaigns/CampaignMARTStrategy.tsx` | Colored borders |
+| `src/components/campaigns/CampaignAccountsContacts.tsx` | Remove duplicate utils, use imports |
+| `src/hooks/useCampaigns.tsx` | Add audit logging to archive/restore |
 
