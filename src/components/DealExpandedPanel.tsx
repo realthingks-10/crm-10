@@ -462,6 +462,8 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
       console.error("Error creating contact:", error);
       return null;
     }
+    // Log inline contact creation
+    await logStakeholderCreate('contacts', data.id, { contact_name: name, company_name: companyName, created_from: 'deal_stakeholder_picker', deal_name: deal.deal_name });
     // Add to local contacts list
     setAllContacts((prev) => [...prev, data as Contact].sort((a, b) => a.contact_name.localeCompare(b.contact_name)));
     return data as Contact;
@@ -765,12 +767,11 @@ export const DealExpandedPanel = ({
 
     setIsSavingLog(true);
     try {
-      const { error } = await supabase.from("security_audit_log").insert({
-        action: logType.toUpperCase(),
-        resource_type: "deals",
-        resource_id: deal.id,
-        user_id: user.id,
-        details: {
+      const { error } = await supabase.rpc('log_security_event', {
+        p_action: logType.toUpperCase(),
+        p_resource_type: 'deals',
+        p_resource_id: deal.id,
+        p_details: {
           message: logMessage.trim(),
           log_type: logType,
           manual_entry: true
@@ -797,7 +798,7 @@ export const DealExpandedPanel = ({
 
     setIsSavingLog(true);
     try {
-      const { error } = await supabase.from("action_items").insert({
+      const { data: insertedItem, error } = await supabase.from("action_items").insert({
         title: actionTitle.trim(),
         module_type: "deals",
         module_id: deal.id,
@@ -806,12 +807,12 @@ export const DealExpandedPanel = ({
         due_date: actionDueDate || null,
         priority: actionPriority,
         status: actionStatus
-      });
+      }).select('id').single();
 
       if (error) throw error;
 
-      // Log the action item creation
-      await logCreate('action_items', '', {
+      // Log the action item creation with actual ID
+      await logCreate('action_items', insertedItem?.id || '', {
         title: actionTitle.trim(),
         module_type: 'deals',
         module_id: deal.id,

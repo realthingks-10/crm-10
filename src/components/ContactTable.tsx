@@ -193,49 +193,6 @@ export const ContactTable = ({
     );
   }
 
-  const handleConvertToLead = async (contact: Contact) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({
-          title: "Error",
-          description: "You must be logged in to convert contacts",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      const leadData = {
-        lead_name: contact.contact_name,
-        company_name: contact.company_name,
-        position: contact.position,
-        email: contact.email,
-        phone_no: contact.phone_no,
-        country: contact.region,
-        industry: contact.industry,
-        contact_source: contact.contact_source,
-        lead_status: 'New',
-        created_by: user.id,
-      };
-      
-      const { data: insertedLead, error } = await supabase.from('leads').insert([leadData]).select().single();
-      if (error) throw error;
-      
-      await logCreate('leads', insertedLead?.id || '', { ...leadData, converted_from_contact: contact.contact_name, contact_id: contact.id });
-      
-      toast({
-        title: "Success",
-        description: "Contact converted to lead successfully",
-      });
-    } catch (error) {
-      console.error('Convert to lead error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to convert contact to lead",
-        variant: "destructive",
-      });
-    }
-  };
 
   const handleAddActionItem = (contact: Contact) => {
     toast({
@@ -264,7 +221,7 @@ export const ContactTable = ({
           sortField={sortField}
           sortDirection={sortDirection}
           onSort={handleSort}
-          onConvertToLead={handleConvertToLead}
+          
           onAddActionItem={handleAddActionItem}
         />
       </div>

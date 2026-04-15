@@ -8,7 +8,8 @@ import {
   PinOff,
   Bell,
   CheckSquare,
-  Building2
+  Building2,
+  Megaphone
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -35,6 +36,7 @@ const menuItems = [
   { title: "Accounts", url: "/accounts", icon: Building2 },
   { title: "Contacts", url: "/contacts", icon: Users },
   { title: "Deals", url: "/deals", icon: BarChart3 },
+  { title: "Campaigns", url: "/campaigns", icon: Megaphone },
   { title: "Action Items", url: "/action-items", icon: CheckSquare },
 ];
 

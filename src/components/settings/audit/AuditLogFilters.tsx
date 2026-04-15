@@ -7,7 +7,7 @@ import { Search, CalendarIcon, X } from "lucide-react";
 import { format } from "date-fns";
 import { FilterCategory, getDatePresets } from "./auditLogUtils";
 
-export type ModuleFilter = 'all' | 'deals' | 'contacts' | 'leads' | 'action_items' | 'accounts';
+export type ModuleFilter = 'all' | 'deals' | 'contacts' | 'leads' | 'action_items' | 'accounts' | 'deal_stakeholders' | 'page_permissions' | 'email_templates' | 'notification_preferences';
 
 interface AuditLogFiltersProps {
   searchTerm: string;
@@ -70,6 +70,10 @@ export const AuditLogFilters = ({
           <SelectItem value="contacts">Contacts</SelectItem>
           <SelectItem value="accounts">Accounts</SelectItem>
           <SelectItem value="action_items">Action Items</SelectItem>
+          <SelectItem value="deal_stakeholders">Stakeholders</SelectItem>
+          <SelectItem value="page_permissions">Page Access</SelectItem>
+          <SelectItem value="email_templates">Email Templates</SelectItem>
+          <SelectItem value="notification_preferences">Notifications</SelectItem>
         </SelectContent>
       </Select>
 

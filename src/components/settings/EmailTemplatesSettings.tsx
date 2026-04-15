@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useSecurityAudit } from "@/hooks/useSecurityAudit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +33,7 @@ const ITEMS_PER_PAGE = 10;
 const EmailTemplatesSettings = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { logSecurityEvent } = useSecurityAudit();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -142,12 +144,20 @@ const EmailTemplatesSettings = () => {
           .update(templateData)
           .eq('id', editingTemplate.id);
         if (error) throw error;
+        logSecurityEvent('UPDATE', 'email_templates', editingTemplate.id, {
+          template_name: formData.name
+        });
         toast({ title: "Success", description: "Template updated successfully" });
       } else {
-        const { error } = await (supabase as any)
+        const { data: newTemplate, error } = await (supabase as any)
           .from('email_templates')
-          .insert([templateData]);
+          .insert([templateData])
+          .select('id')
+          .single();
         if (error) throw error;
+        logSecurityEvent('CREATE', 'email_templates', newTemplate?.id, {
+          template_name: formData.name
+        });
         toast({ title: "Success", description: "Template created successfully" });
       }
 
@@ -173,6 +183,11 @@ const EmailTemplatesSettings = () => {
         .eq('id', id);
 
       if (error) throw error;
+
+      const deletedTemplate = templates.find(t => t.id === id);
+      logSecurityEvent('DELETE', 'email_templates', id, {
+        template_name: deletedTemplate?.name
+      });
 
       setTemplates(prev => prev.filter(t => t.id !== id));
       setShowDeleteDialog(false);

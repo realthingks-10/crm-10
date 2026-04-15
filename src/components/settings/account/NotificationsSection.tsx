@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlarmClock, Check, Mail, Bell, TrendingUp, ListChecks, Building2, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useSecurityAudit } from '@/hooks/useSecurityAudit';
 
 interface NotificationPrefs {
   email_notifications: boolean;
@@ -44,6 +45,7 @@ const NotificationsSection = ({ notificationPrefs, setNotificationPrefs, userId,
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedRef = useRef<string>(JSON.stringify(notificationPrefs));
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const { logSecurityEvent } = useSecurityAudit();
 
   const saveNotificationPrefs = useCallback(async (prefs: NotificationPrefs) => {
     if (!userId) return;
@@ -70,6 +72,9 @@ const NotificationsSection = ({ notificationPrefs, setNotificationPrefs, userId,
         } as any, { onConflict: 'user_id' });
       if (error) throw error;
       lastSavedRef.current = JSON.stringify(prefs);
+      logSecurityEvent('SETTINGS_UPDATE', 'notification_preferences', undefined, {
+        updated_preferences: prefs
+      });
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (error) {
