@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import { toast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
+import { useCRUDAudit } from "@/hooks/useCRUDAudit";
 
 interface Props {
   campaignId: string;
@@ -30,6 +31,7 @@ const stageRanks: Record<string, number> = {
 export function CampaignCommunications({ campaignId, isCampaignEnded }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { logCreate } = useCRUDAudit();
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [channelFilter, setChannelFilter] = useState("all");
   const [accountFilter, setAccountFilter] = useState("all");
@@ -150,6 +152,15 @@ export function CampaignCommunications({ campaignId, isCampaignEnded }: Props) {
     queryClient.invalidateQueries({ queryKey: ["campaign-contacts", campaignId] });
     queryClient.invalidateQueries({ queryKey: ["campaign-accounts", campaignId] });
     setLogModalOpen(false);
+
+    // Audit log
+    await logCreate('campaign_communications', '', {
+      campaign_id: campaignId,
+      communication_type: logForm.communication_type,
+      contact_id: logForm.contact_id,
+      subject: logForm.subject,
+    });
+
     setLogForm({ communication_type: "Email", contact_id: "", subject: "", body: "", notes: "", email_status: "Sent", call_outcome: "", linkedin_status: "Connection Sent" });
     toast({ title: "Communication logged" });
   };
@@ -196,8 +207,8 @@ export function CampaignCommunications({ campaignId, isCampaignEnded }: Props) {
   const contactOptions = campaignContacts.map((cc: any) => ({ id: cc.contact_id, name: cc.contacts?.contact_name || "Unknown" }));
 
   return (
-    <div className="space-y-4">
-      <Card>
+    <div className="space-y-3">
+      <Card className="border">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2"><MessageSquare className="h-4 w-4" /> Outreach Log ({communications.length})</CardTitle>
           <div className="flex items-center gap-2">
@@ -277,7 +288,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded }: Props) {
               </TableHeader>
               <TableBody>
                 {sorted.map((c: any) => (
-                  <>
+                  <Fragment key={c.id}>
                     <TableRow key={c.id} className="cursor-pointer" onClick={() => toggleExpand(c.id)}>
                       <TableCell className="px-2">
                         {expandedRows.has(c.id) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -303,7 +314,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded }: Props) {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>
