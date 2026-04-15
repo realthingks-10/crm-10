@@ -47,6 +47,22 @@ const STATUS_BADGE: Record<string, string> = {
   Completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
 };
 
+const STAT_BORDER_COLORS: Record<string, string> = {
+  Total: "border-l-primary",
+  Active: "border-l-green-500",
+  Draft: "border-l-muted-foreground",
+  Completed: "border-l-blue-500",
+  Paused: "border-l-yellow-500",
+};
+
+const STAT_ICON_BG: Record<string, string> = {
+  Total: "bg-primary/10",
+  Active: "bg-green-100 dark:bg-green-900/30",
+  Draft: "bg-muted",
+  Completed: "bg-blue-100 dark:bg-blue-900/30",
+  Paused: "bg-yellow-100 dark:bg-yellow-900/30",
+};
+
 interface AggregateData {
   accountsBycamp: Record<string, number>;
   contactsBycamp: Record<string, number>;
@@ -66,7 +82,6 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
     totalAccounts: 0, totalContacts: 0, totalComms: 0,
   });
 
-  // Fetch aggregate data
   useEffect(() => {
     const fetchAggregates = async () => {
       const [accRes, conRes, comRes] = await Promise.all([
@@ -74,17 +89,14 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
         supabase.from("campaign_contacts").select("campaign_id"),
         supabase.from("campaign_communications").select("campaign_id"),
       ]);
-
       const countBy = (rows: { campaign_id: string }[] | null) => {
         const map: Record<string, number> = {};
         (rows || []).forEach((r) => { map[r.campaign_id] = (map[r.campaign_id] || 0) + 1; });
         return map;
       };
-
       const accountsBycamp = countBy(accRes.data);
       const contactsBycamp = countBy(conRes.data);
       const commsBycamp = countBy(comRes.data);
-
       setAggregates({
         accountsBycamp, contactsBycamp, commsBycamp,
         totalAccounts: accRes.data?.length || 0,
@@ -95,7 +107,6 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
     fetchAggregates();
   }, [campaigns.length]);
 
-  // Counts
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { Active: 0, Draft: 0, Completed: 0, Paused: 0 };
     campaigns.forEach((c) => { const s = c.status || "Draft"; if (counts[s] !== undefined) counts[s]++; });
@@ -111,7 +122,6 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
     return counts;
   }, [campaigns]);
 
-  // Chart data
   const pieData = useMemo(() =>
     Object.entries(statusCounts)
       .filter(([, v]) => v > 0)
@@ -126,7 +136,6 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
     [typeCounts]
   );
 
-  // Filtered campaigns
   const filtered = useMemo(() => {
     return campaigns.filter((c) => {
       if (statusFilter && (c.status || "Draft") !== statusFilter) return false;
@@ -136,14 +145,13 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
     });
   }, [campaigns, statusFilter, typeFilter, search]);
 
-  // MART campaigns - show all, sorted by completion
   const martCampaigns = useMemo(() => {
     return [...campaigns]
       .map((c) => ({ ...c, mart: getMartProgress(c.id) }))
       .sort((a, b) => {
         const aPct = a.mart.total > 0 ? a.mart.count / a.mart.total : 0;
         const bPct = b.mart.total > 0 ? b.mart.count / b.mart.total : 0;
-        return aPct - bPct; // incomplete first
+        return aPct - bPct;
       });
   }, [campaigns, getMartProgress]);
 
@@ -178,19 +186,21 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
   const activeFilterLabel = statusFilter || typeFilter || null;
 
   return (
-    <div className="flex-1 overflow-auto p-4 space-y-4">
+    <div className="flex-1 overflow-auto p-3 space-y-3">
       {/* Stat Cards */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-5 gap-2">
         {stats.map((s) => (
           <Card
             key={s.label}
-            className={`shadow-none cursor-pointer transition-all hover:shadow-md ${
+            className={`border border-l-4 ${STAT_BORDER_COLORS[s.label] || "border-l-primary"} shadow-none cursor-pointer transition-all hover:shadow-md ${
               statusFilter === s.filter ? "ring-2 ring-primary" : ""
             } ${s.filter === null && !statusFilter ? "ring-2 ring-primary/30" : ""}`}
             onClick={() => handleStatClick(s.filter)}
           >
             <CardContent className="p-3 flex items-center gap-3">
-              <s.icon className={`h-5 w-5 ${s.color} shrink-0`} />
+              <div className={`h-8 w-8 rounded-lg ${STAT_ICON_BG[s.label] || "bg-muted"} flex items-center justify-center shrink-0`}>
+                <s.icon className={`h-4 w-4 ${s.color} shrink-0`} />
+              </div>
               <div>
                 <p className="text-2xl font-bold leading-none">{s.value}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
@@ -201,9 +211,9 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
       </div>
 
       {/* Charts + Activity Row */}
-      <div className="grid grid-cols-12 gap-4">
+      <div className="grid grid-cols-12 gap-3">
         {/* Pie Chart */}
-        <Card className="col-span-4 shadow-none">
+        <Card className="col-span-4 border shadow-none">
           <CardHeader className="pb-1 pt-3 px-4">
             <CardTitle className="text-sm font-medium">Status Distribution</CardTitle>
           </CardHeader>
@@ -214,37 +224,17 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
                   <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={40}
-                    outerRadius={70}
-                    paddingAngle={3}
-                    dataKey="value"
-                    onClick={handlePieClick}
-                    cursor="pointer"
-                    stroke="none"
+                    data={pieData} cx="50%" cy="50%"
+                    innerRadius={40} outerRadius={70}
+                    paddingAngle={3} dataKey="value"
+                    onClick={handlePieClick} cursor="pointer" stroke="none"
                   >
                     {pieData.map((entry, i) => (
-                      <Cell
-                        key={i}
-                        fill={entry.fill}
-                        opacity={statusFilter && statusFilter !== entry.name ? 0.3 : 1}
-                      />
+                      <Cell key={i} fill={entry.fill} opacity={statusFilter && statusFilter !== entry.name ? 0.3 : 1} />
                     ))}
                   </Pie>
-                  <RechartsTooltip
-                    formatter={(value: number, name: string) => [`${value} campaigns`, name]}
-                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                  />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={24}
-                    iconSize={8}
-                    formatter={(value: string) => (
-                      <span className="text-xs text-muted-foreground">{value}</span>
-                    )}
-                  />
+                  <RechartsTooltip formatter={(value: number, name: string) => [`${value} campaigns`, name]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Legend verticalAlign="bottom" height={24} iconSize={8} formatter={(value: string) => (<span className="text-xs text-muted-foreground">{value}</span>)} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -252,7 +242,7 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
         </Card>
 
         {/* Bar Chart */}
-        <Card className="col-span-5 shadow-none">
+        <Card className="col-span-5 border shadow-none">
           <CardHeader className="pb-1 pt-3 px-4">
             <CardTitle className="text-sm font-medium">Campaign Types</CardTitle>
           </CardHeader>
@@ -262,26 +252,12 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
             ) : (
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={barData} onClick={handleBarClick} style={{ cursor: "pointer" }}>
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 10 }}
-                    interval={0}
-                    angle={-20}
-                    textAnchor="end"
-                    height={40}
-                  />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={40} />
                   <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={30} />
-                  <RechartsTooltip
-                    formatter={(value: number) => [`${value} campaigns`]}
-                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                  />
+                  <RechartsTooltip formatter={(value: number) => [`${value} campaigns`]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                   <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40}>
                     {barData.map((entry, i) => (
-                      <Cell
-                        key={i}
-                        fill="hsl(var(--primary))"
-                        opacity={typeFilter && typeFilter !== entry.name ? 0.3 : 0.85}
-                      />
+                      <Cell key={i} fill="hsl(var(--primary))" opacity={typeFilter && typeFilter !== entry.name ? 0.3 : 0.85} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -291,11 +267,11 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
         </Card>
 
         {/* Activity Summary */}
-        <Card className="col-span-3 shadow-none">
+        <Card className="col-span-3 border shadow-none">
           <CardHeader className="pb-1 pt-3 px-4">
             <CardTitle className="text-sm font-medium">Activity Summary</CardTitle>
           </CardHeader>
-          <CardContent className="p-4 space-y-4">
+          <CardContent className="p-3 space-y-3">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                 <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
@@ -327,8 +303,8 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
         </Card>
       </div>
 
-      {/* MART Progress - compact */}
-      <Card className="shadow-none">
+      {/* MART Progress */}
+      <Card className="border shadow-none">
         <CardHeader className="pb-1 pt-3 px-4 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <TrendingUp className="h-4 w-4" /> MART Progress
@@ -360,17 +336,13 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
       </Card>
 
       {/* Campaigns Table */}
-      <Card className="shadow-none">
+      <Card className="border shadow-none">
         <CardHeader className="pb-2 pt-3 px-4 flex flex-row items-center justify-between">
           <div className="flex items-center gap-3">
             <CardTitle className="text-sm font-medium">
               All Campaigns
               {activeFilterLabel && (
-                <Badge
-                  variant="secondary"
-                  className="ml-2 cursor-pointer"
-                  onClick={() => { setStatusFilter(null); setTypeFilter(null); }}
-                >
+                <Badge variant="secondary" className="ml-2 cursor-pointer" onClick={() => { setStatusFilter(null); setTypeFilter(null); }}>
                   {activeFilterLabel} ✕
                 </Badge>
               )}
@@ -379,16 +351,11 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
           </div>
           <div className="relative w-64">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8 text-xs"
-            />
+            <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-8 text-xs" />
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="max-h-[320px] overflow-auto">
+          <div className="max-h-[400px] overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -422,18 +389,12 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
                         className="cursor-pointer hover:bg-muted/50 even:bg-muted/10"
                         onClick={() => { const slug = c.campaign_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); navigate(`/campaigns/${slug}`); }}
                       >
-                        <TableCell className="text-xs font-medium max-w-[200px] truncate">
-                          {c.campaign_name}
-                        </TableCell>
+                        <TableCell className="text-xs font-medium max-w-[200px] truncate">{c.campaign_name}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{c.campaign_type || "—"}</TableCell>
                         <TableCell>
-                          <Badge className={`text-[10px] ${STATUS_BADGE[c.status || "Draft"]}`} variant="secondary">
-                            {c.status || "Draft"}
-                          </Badge>
+                          <Badge className={`text-[10px] ${STATUS_BADGE[c.status || "Draft"]}`} variant="secondary">{c.status || "Draft"}</Badge>
                         </TableCell>
-                        <TableCell>
-                          <span className="text-xs">{mart.count}/{mart.total}</span>
-                        </TableCell>
+                        <TableCell><span className="text-xs">{mart.count}/{mart.total}</span></TableCell>
                         <TableCell className="text-xs text-right tabular-nums">{acc}</TableCell>
                         <TableCell className="text-xs text-right tabular-nums">{con}</TableCell>
                         <TableCell className="text-xs text-right tabular-nums">{com}</TableCell>
