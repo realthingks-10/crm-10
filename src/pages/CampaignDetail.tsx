@@ -201,7 +201,7 @@ export default function CampaignDetail() {
       )}
 
       {/* 7 Tabs per spec */}
-      <div className="flex-1 overflow-hidden px-6 pt-4 pb-6">
+      <div className="flex-1 overflow-hidden px-4 pt-3 pb-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="overflow-x-auto">
             <TabsList className="w-full grid grid-cols-6">

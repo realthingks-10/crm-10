@@ -189,7 +189,7 @@ export function CampaignMARTStrategy({ campaignId, campaign, isMARTComplete, upd
       </Card>
 
       {sections.map((section) => (
-        <Card key={section.key}>
+        <Card key={section.key} className={`border-l-4 ${section.done ? "border-l-green-500" : "border-l-muted-foreground/30"}`}>
           <Collapsible open={openSections[section.key]} onOpenChange={() => toggleSection(section.key)}>
             <CollapsibleTrigger asChild>
               <CardHeader className="py-2.5 px-4 cursor-pointer hover:bg-muted/30 transition-colors">

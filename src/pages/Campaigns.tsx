@@ -219,7 +219,7 @@ export default function Campaigns() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8"
-                                  onClick={() => cloneCampaign.mutateAsync(campaign.id).then((newId) => { if (newId) navigate(`/campaigns/${newId}`); })}
+                                  onClick={() => cloneCampaign.mutateAsync(campaign.id).then((newId) => { if (newId) { const slug = (campaign.campaign_name + " (Copy)").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); navigate(`/campaigns/${slug}`); } })}
                                 >
                                   <Copy className="h-4 w-4 text-muted-foreground" />
                                 </Button>
