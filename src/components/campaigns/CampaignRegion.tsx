@@ -173,23 +173,23 @@ export function CampaignRegion({ campaign }: Props) {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
         {selectedRegionNames.length > 0 ? (
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><Building2 className="h-3.5 w-3.5" /><span className="font-medium text-foreground">{counts?.accounts ?? "…"}</span> accounts</span>
-            <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" /><span className="font-medium text-foreground">{counts?.contacts ?? "…"}</span> contacts</span>
-            <span>in {selectedRegionNames.join(", ")}</span>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+            <span className="flex items-center gap-1"><Building2 className="h-3 w-3" /><span className="font-medium text-foreground">{counts?.accounts ?? "…"}</span> accounts</span>
+            <span className="flex items-center gap-1"><Users className="h-3 w-3" /><span className="font-medium text-foreground">{counts?.contacts ?? "…"}</span> contacts</span>
+            <span>· {selectedRegionNames.join(", ")}</span>
           </div>
         ) : <span />}
-        <Button variant="outline" size="sm" onClick={openAdd}><Plus className="h-4 w-4 mr-1" /> Add Region</Button>
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={openAdd}><Plus className="h-3 w-3 mr-1" /> Add Region</Button>
       </div>
 
       {regionCards.length === 0 && !formOpen && (
-        <p className="text-sm text-muted-foreground">No regions defined yet. Add regions to specify geographic targeting.</p>
+        <p className="text-xs text-muted-foreground">No regions defined yet. Add regions to specify geographic targeting.</p>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         {Object.entries(
           regionCards.reduce<Record<string, { card: RegionCard; index: number }[]>>((acc, card, idx) => {
             const key = card.region || "(no region)";
@@ -197,29 +197,31 @@ export function CampaignRegion({ campaign }: Props) {
             return acc;
           }, {})
         ).map(([regionName, group]) => (
-          <div key={regionName} className="border border-border rounded-lg p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-sm flex items-center gap-2"><Globe className="h-4 w-4 text-primary" />{regionName}</span>
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => openAddCountryToRegion(regionName)}>
-                <Plus className="h-3.5 w-3.5 mr-1" /> Add country
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {group.map(({ card, index }) => (
-                <div key={index} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/50 border border-border text-xs">
-                  <span className="font-medium">{card.country || "—"}</span>
-                  {card.timezone && <span className="text-muted-foreground">· {getTimezoneDisplay(card.timezone)}</span>}
-                  <Button variant="ghost" size="icon" className="h-5 w-5 ml-0.5" onClick={() => openEdit(index)}><Pencil className="h-3 w-3" /></Button>
-                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => confirmDeleteCard(index)}><Trash2 className="h-3 w-3 text-muted-foreground" /></Button>
+          <div key={regionName} className="border border-border rounded-md px-2.5 py-1.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <span className="font-medium text-xs flex items-center gap-1.5 shrink-0"><Globe className="h-3.5 w-3.5 text-primary" />{regionName}</span>
+                <div className="flex flex-wrap gap-1">
+                  {group.map(({ card, index }) => (
+                    <div key={index} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/50 border border-border text-xs">
+                      <span className="font-medium">{card.country || "—"}</span>
+                      {card.timezone && <span className="text-muted-foreground hidden sm:inline">· {getTimezoneDisplay(card.timezone)}</span>}
+                      <Button variant="ghost" size="icon" className="h-4 w-4" onClick={() => openEdit(index)}><Pencil className="h-2.5 w-2.5" /></Button>
+                      <Button variant="ghost" size="icon" className="h-4 w-4" onClick={() => confirmDeleteCard(index)}><Trash2 className="h-2.5 w-2.5 text-muted-foreground" /></Button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <Button variant="ghost" size="sm" className="h-6 text-xs px-2 shrink-0" onClick={() => openAddCountryToRegion(regionName)}>
+                <Plus className="h-3 w-3 mr-0.5" /> Country
+              </Button>
             </div>
           </div>
         ))}
       </div>
 
       {formOpen && (
-        <div className="border border-border rounded-lg p-4 space-y-3 bg-muted/30">
+        <div className="border border-border rounded-md p-2.5 space-y-2 bg-muted/30">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Region *</Label>
