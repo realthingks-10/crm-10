@@ -1,12 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { BarChart3, Users, Building2, Mail, Phone, MessageSquare, TrendingUp, RefreshCw, ArrowRight } from "lucide-react";
+import { BarChart3, Users, Building2, Mail, Phone, MessageSquare, TrendingUp, RefreshCw, ArrowRight, Send, CheckCircle, XCircle, Reply, Download, Clock } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Legend,
-  Tooltip as RechartsTooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid
+  Tooltip as RechartsTooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar
 } from "recharts";
 import { format } from "date-fns";
 
@@ -18,6 +20,8 @@ const ICON_BG: Record<string, string> = {
   "Accounts Targeted": "bg-blue-100 dark:bg-blue-900/30",
   "Contacts Targeted": "bg-green-100 dark:bg-green-900/30",
   "Emails Sent": "bg-indigo-100 dark:bg-indigo-900/30",
+  "Emails Delivered": "bg-teal-100 dark:bg-teal-900/30",
+  "Emails Bounced": "bg-red-100 dark:bg-red-900/30",
   "Calls Made": "bg-orange-100 dark:bg-orange-900/30",
   "LinkedIn Messages": "bg-purple-100 dark:bg-purple-900/30",
   "Responses": "bg-emerald-100 dark:bg-emerald-900/30",
@@ -29,6 +33,8 @@ const ICON_COLOR: Record<string, string> = {
   "Accounts Targeted": "text-blue-600 dark:text-blue-400",
   "Contacts Targeted": "text-green-600 dark:text-green-400",
   "Emails Sent": "text-indigo-600 dark:text-indigo-400",
+  "Emails Delivered": "text-teal-600 dark:text-teal-400",
+  "Emails Bounced": "text-red-600 dark:text-red-400",
   "Calls Made": "text-orange-600 dark:text-orange-400",
   "LinkedIn Messages": "text-purple-600 dark:text-purple-400",
   "Responses": "text-emerald-600 dark:text-emerald-400",
@@ -37,6 +43,7 @@ const ICON_COLOR: Record<string, string> = {
 };
 
 const FUNNEL_COLORS = ["hsl(var(--primary))", "hsl(var(--primary) / 0.8)", "#f59e0b", "#10b981", "#6366f1", "#ec4899"];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function CampaignAnalytics({ campaignId }: Props) {
   const queryClient = useQueryClient();
@@ -71,7 +78,7 @@ export function CampaignAnalytics({ campaignId }: Props) {
   const { data: deals = [] } = useQuery({
     queryKey: ["campaign-deals", campaignId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("deals").select("id, stage").eq("campaign_id", campaignId);
+      const { data, error } = await supabase.from("deals").select("id, stage, total_contract_value").eq("campaign_id", campaignId);
       if (error) throw error;
       return data;
     },
@@ -85,15 +92,26 @@ export function CampaignAnalytics({ campaignId }: Props) {
   };
 
   const emails = communications.filter((c) => c.communication_type === "Email");
-  const calls = communications.filter((c) => c.communication_type === "Call");
+  const providerEmails = emails.filter(e => e.sent_via !== "manual");
+  const manualEmails = emails.filter(e => e.sent_via === "manual");
+  
+  // For analytics, only count provider-sent emails as truly "sent"
+  const emailsSent = providerEmails.filter(e => e.delivery_status === "sent");
+  const emailsDelivered = providerEmails.filter(e => e.delivery_status === "sent");
+  const emailsBounced = providerEmails.filter(e => e.delivery_status === "failed" || e.email_status === "Bounced");
+  const emailsReplied = emails.filter(e => e.email_status === "Replied");
+  // Include manual "Sent" logs in total sent count for display but label separately
+  const totalEmailsLogged = emailsSent.length + manualEmails.filter(e => e.email_status === "Sent" || e.email_status === "Delivered" || e.email_status === "Opened" || e.email_status === "Replied").length;
+  const calls = communications.filter((c) => c.communication_type === "Call" || c.communication_type === "Phone");
   const linkedIn = communications.filter((c) => c.communication_type === "LinkedIn");
   const responded = contacts.filter((c) => c.stage === "Responded" || c.stage === "Qualified");
   const dealsWon = deals.filter((d) => d.stage === "Won");
+  const totalDealValue = deals.reduce((sum, d) => sum + (Number(d.total_contract_value) || 0), 0);
 
   const stats = [
     { label: "Accounts Targeted", value: accounts.length, icon: Building2 },
     { label: "Contacts Targeted", value: contacts.length, icon: Users },
-    { label: "Emails Sent", value: emails.length, icon: Mail },
+    { label: "Emails Sent", value: totalEmailsLogged, icon: Send },
     { label: "Calls Made", value: calls.length, icon: Phone },
     { label: "LinkedIn Messages", value: linkedIn.length, icon: MessageSquare },
     { label: "Responses", value: responded.length, icon: TrendingUp },
@@ -110,17 +128,36 @@ export function CampaignAnalytics({ campaignId }: Props) {
     { label: "Won", value: dealsWon.length },
   ];
 
-  // Channel breakdown for pie chart
+  const emailMetrics = useMemo(() => [
+    { name: "Sent (Provider)", value: emailsSent.length, fill: "#6366f1" },
+    { name: "Logged (Manual)", value: manualEmails.length, fill: "#94a3b8" },
+    { name: "Delivered", value: emailsDelivered.length, fill: "#10b981" },
+    { name: "Replied", value: emailsReplied.length, fill: "#8b5cf6" },
+    { name: "Failed", value: emailsBounced.length, fill: "#ef4444" },
+  ], [emailsSent.length, manualEmails.length, emailsDelivered.length, emailsReplied.length, emailsBounced.length]);
+
   const channelData = useMemo(() => {
-    const data = [
+    return [
       { name: "Email", value: emails.length, fill: "#6366f1" },
       { name: "Call", value: calls.length, fill: "#f59e0b" },
       { name: "LinkedIn", value: linkedIn.length, fill: "#8b5cf6" },
     ].filter(d => d.value > 0);
-    return data;
   }, [emails.length, calls.length, linkedIn.length]);
 
-  // Outreach timeline
+  const responseRates = useMemo(() => {
+    const emailResponseRate = emailsSent.length > 0 ? Math.round((emailsReplied.length / emailsSent.length) * 100) : 0;
+    const callInterested = calls.filter(c => c.call_outcome === "Interested").length;
+    const callResponseRate = calls.length > 0 ? Math.round((callInterested / calls.length) * 100) : 0;
+    const liRespondedCount = linkedIn.filter(l => l.linkedin_status === "Responded").length;
+    const liResponseRate = linkedIn.length > 0 ? Math.round((liRespondedCount / linkedIn.length) * 100) : 0;
+
+    return [
+      { channel: "Email", sent: emailsSent.length, responded: emailsReplied.length, rate: emailResponseRate },
+      { channel: "Call", sent: calls.length, responded: callInterested, rate: callResponseRate },
+      { channel: "LinkedIn", sent: linkedIn.length, responded: liRespondedCount, rate: liResponseRate },
+    ];
+  }, [emailsSent, emailsReplied, calls, linkedIn]);
+
   const timelineData = useMemo(() => {
     if (communications.length === 0) return [];
     const weekMap: Record<string, { week: string; Email: number; Call: number; LinkedIn: number }> = {};
@@ -131,15 +168,96 @@ export function CampaignAnalytics({ campaignId }: Props) {
       weekStart.setDate(d.getDate() - d.getDay());
       const key = format(weekStart, "dd MMM");
       if (!weekMap[key]) weekMap[key] = { week: key, Email: 0, Call: 0, LinkedIn: 0 };
-      const type = c.communication_type as "Email" | "Call" | "LinkedIn";
+      const type = c.communication_type === "Phone" ? "Call" : c.communication_type as "Email" | "Call" | "LinkedIn";
       if (weekMap[key][type] !== undefined) weekMap[key][type]++;
     });
     return Object.values(weekMap).sort((a, b) => new Date(a.week).getTime() - new Date(b.week).getTime());
   }, [communications]);
 
+  // Best time analysis - responses by day of week and hour
+  const bestTimeData = useMemo(() => {
+    const responseComs = communications.filter((c: any) =>
+      c.communication_date && (
+        c.email_status === "Replied" ||
+        c.call_outcome === "Interested" ||
+        c.linkedin_status === "Responded" ||
+        c.outcome === "Responded"
+      )
+    );
+    if (responseComs.length < 3) return [];
+
+    const dayCount: Record<string, number> = {};
+    DAY_NAMES.forEach(d => { dayCount[d] = 0; });
+
+    responseComs.forEach((c: any) => {
+      const d = new Date(c.communication_date);
+      dayCount[DAY_NAMES[d.getDay()]]++;
+    });
+
+    return DAY_NAMES.map(day => ({ day, responses: dayCount[day] }));
+  }, [communications]);
+
+  // CSV Export
+  const handleExportCSV = useCallback(() => {
+    const rows: string[][] = [];
+    rows.push(["Campaign Analytics Export"]);
+    rows.push([]);
+
+    // Stats
+    rows.push(["Metric", "Value"]);
+    stats.forEach(s => rows.push([s.label, String(s.value)]));
+    rows.push([]);
+
+    // Funnel
+    rows.push(["Funnel Stage", "Count"]);
+    funnel.forEach(f => rows.push([f.label, String(f.value)]));
+    rows.push([]);
+
+    // Response rates
+    rows.push(["Channel", "Sent", "Responded", "Rate %"]);
+    responseRates.forEach(r => rows.push([r.channel, String(r.sent), String(r.responded), String(r.rate)]));
+    rows.push([]);
+
+    // Email metrics
+    rows.push(["Email Metric", "Count"]);
+    emailMetrics.forEach(m => rows.push([m.name, String(m.value)]));
+    rows.push([]);
+
+    // Timeline
+    if (timelineData.length > 0) {
+      rows.push(["Week", "Email", "Call", "LinkedIn"]);
+      timelineData.forEach(t => rows.push([t.week, String(t.Email), String(t.Call), String(t.LinkedIn)]));
+      rows.push([]);
+    }
+
+    // Best time
+    if (bestTimeData.length > 0) {
+      rows.push(["Day", "Responses"]);
+      bestTimeData.forEach(b => rows.push([b.day, String(b.responses)]));
+    }
+
+    const csvContent = rows.map(r => r.map(c => {
+      if (c.includes(",") || c.includes('"')) return `"${c.replace(/"/g, '""')}"`;
+      return c;
+    }).join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `campaign-analytics-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }, [stats, funnel, responseRates, emailMetrics, timelineData, bestTimeData]);
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={handleExportCSV}>
+          <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
+        </Button>
         <Button variant="outline" size="sm" onClick={handleRefresh}>
           <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
         </Button>
@@ -161,6 +279,23 @@ export function CampaignAnalytics({ campaignId }: Props) {
           </Card>
         ))}
       </div>
+
+      {/* Email Delivery Metrics */}
+      {emails.length > 0 && (
+        <Card className="border">
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Mail className="h-4 w-4" /> Email Delivery Metrics</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-5 gap-3">
+              {emailMetrics.map(m => (
+                <div key={m.name} className="text-center">
+                  <p className="text-2xl font-semibold" style={{ color: m.fill }}>{m.value}</p>
+                  <p className="text-xs text-muted-foreground">{m.name}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Conversion Funnel */}
@@ -221,6 +356,58 @@ export function CampaignAnalytics({ campaignId }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Response Rate by Channel */}
+      <Card className="border">
+        <CardHeader><CardTitle className="text-base">Response Rate by Channel</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4">
+            {responseRates.map(r => (
+              <div key={r.channel} className="text-center border rounded-lg p-3">
+                <p className="text-3xl font-bold">{r.rate}%</p>
+                <p className="text-xs text-muted-foreground">{r.channel}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">{r.responded}/{r.sent} responded</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Best Time Analysis */}
+      {bestTimeData.length > 0 && (
+        <Card className="border">
+          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Clock className="h-4 w-4" /> Best Day for Responses</CardTitle></CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={bestTimeData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <RechartsTooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                <Bar dataKey="responses" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ROI Summary */}
+      {deals.length > 0 && totalDealValue > 0 && (
+        <Card className="border bg-primary/5">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Total Pipeline Value from Campaign</p>
+                <p className="text-2xl font-bold">€{totalDealValue.toLocaleString()}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Outreach per Deal</p>
+                <p className="text-lg font-semibold">{Math.round(communications.length / (deals.length || 1))} touchpoints</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Outreach Timeline */}
       {timelineData.length >= 1 && (

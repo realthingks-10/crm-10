@@ -198,8 +198,9 @@ export function CampaignActionItems({ campaignId }: Props) {
     <div className="space-y-3">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <CheckSquare className="h-4 w-4" /> Campaign Tasks ({actionItems.length})
+          <CardTitle className="text-sm flex items-center gap-2">
+            <CheckSquare className="h-4 w-4" /> Campaign Action Items
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{actionItems.length}</Badge>
           </CardTitle>
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={statusFilter} onValueChange={setStatusFilter}>

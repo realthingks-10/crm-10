@@ -192,11 +192,17 @@ export const AccountTableBody = ({
         </button>
       );
     }
-    return <span className="truncate" title={value as string}>{value || '-'}</span>;
+    if (field === 'description') {
+      return (
+        <span className="line-clamp-2 text-muted-foreground text-xs" title={value as string}>
+          {value || '-'}
+        </span>
+      );
+    }
+    return <span className="truncate block" title={value as string}>{value || '-'}</span>;
   };
 
   const getSortIcon = (field: string) => {
-    if (field === 'linked_contacts') return null;
     if (sortField !== field) return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/60" />;
     return sortDirection === 'asc' 
       ? <ArrowUp className="ml-1 h-3 w-3 text-foreground" />
@@ -205,6 +211,15 @@ export const AccountTableBody = ({
 
   const allSelected = pageAccounts.length > 0 && selectedAccounts.length === pageAccounts.length;
   const someSelected = selectedAccounts.length > 0 && selectedAccounts.length < pageAccounts.length;
+
+  // Client-side sort for linked_contacts (count comes from a separate query)
+  const displayAccounts = sortField === 'linked_contacts'
+    ? [...pageAccounts].sort((a, b) => {
+        const ca = contactCounts[a.account_name] || 0;
+        const cb = contactCounts[b.account_name] || 0;
+        return sortDirection === 'asc' ? ca - cb : cb - ca;
+      })
+    : pageAccounts;
 
   return (
     <>
@@ -221,15 +236,18 @@ export const AccountTableBody = ({
                   key={column.field} 
                   className={cn(
                     "relative bg-muted/80 font-bold text-foreground py-3 px-4",
-                    sortField === column.field && column.field !== 'linked_contacts' && "bg-accent"
+                    sortField === column.field && "bg-accent"
                   )}
                   style={{ 
-                    width: column.field === 'linked_contacts' ? '100px' : `${columnWidths[column.field] || 120}px`,
-                    minWidth: column.field === 'account_name' ? '150px' : '60px'
+                    width: column.field === 'linked_contacts' ? '80px' : column.field === 'description' ? '30%' : `${columnWidths[column.field] || 120}px`,
+                    minWidth: column.field === 'account_name' ? '150px' : column.field === 'description' ? '200px' : '60px'
                   }}
                 >
                   {column.field === 'linked_contacts' ? (
-                    <span className="text-sm font-bold">{column.label}</span>
+                    <Button variant="ghost" size="sm" className="h-7 mx-auto flex text-sm font-bold hover:bg-transparent px-2" onClick={() => onSort(column.field)}>
+                      {column.label}
+                      {getSortIcon(column.field)}
+                    </Button>
                   ) : (
                     <Button variant="ghost" size="sm" className="h-7 -ml-2 text-sm font-bold hover:bg-transparent px-2" onClick={() => onSort(column.field)}>
                       {column.label}
@@ -262,7 +280,7 @@ export const AccountTableBody = ({
               </TableCell>
             </TableRow>
           ) : (
-            pageAccounts.map((account) => (
+            displayAccounts.map((account) => (
               <TableRow 
                 key={account.id} 
                 className={cn(
@@ -277,11 +295,12 @@ export const AccountTableBody = ({
                   <TableCell 
                     key={column.field} 
                     className={cn(
-                      'py-3 px-4 text-sm',
-                      column.field === 'account_name' && 'min-w-[300px] max-w-[400px]',
-                      column.field === 'linked_contacts' && 'w-[100px] text-center',
+                      'py-3 px-4 text-sm overflow-hidden',
+                      column.field === 'account_name' && 'min-w-[150px] max-w-[250px]',
+                      column.field === 'description' && 'min-w-[200px] max-w-[350px]',
+                      column.field === 'linked_contacts' && 'w-[80px] text-center',
                       column.field === 'account_owner' && 'whitespace-nowrap',
-                      !['account_name', 'linked_contacts', 'account_owner'].includes(column.field) && 'max-w-[180px]'
+                      !['account_name', 'description', 'linked_contacts', 'account_owner'].includes(column.field) && 'max-w-[180px] truncate'
                     )}
                   >
                     {formatCellValue(account, column.field)}
