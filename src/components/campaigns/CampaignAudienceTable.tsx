@@ -1,11 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Building2, Users, ChevronRight, ChevronDown, Linkedin, Globe, Search, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { Plus, Trash2, Building2, Users, ChevronRight, ChevronDown, Linkedin, Globe, Search, ChevronsDownUp, ChevronsUpDown, Phone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
@@ -18,6 +17,8 @@ interface Props {
   selectedRegions?: string[];
   selectedCountries?: string[];
 }
+
+const COLS = 6;
 
 export function CampaignAudienceTable({ campaignId, isCampaignEnded, selectedRegions = [], selectedCountries = [] }: Props) {
   const queryClient = useQueryClient();
@@ -89,7 +90,6 @@ export function CampaignAudienceTable({ campaignId, isCampaignEnded, selectedReg
     if (!q) return true;
     const a = ca.accounts || {};
     if ([a.account_name, a.industry, a.region, a.country].some((v: string | null) => v && v.toLowerCase().includes(q))) return true;
-    // also keep account if any of its contacts match
     return getContactsForAccount(ca.account_id).some(matchContact);
   };
 
@@ -126,33 +126,40 @@ export function CampaignAudienceTable({ campaignId, isCampaignEnded, selectedReg
     toast({ title: `${removeConfirm.type === "account" ? "Account" : "Contact"} removed` });
   };
 
-  const ContactRow = ({ cc }: { cc: any }) => (
-    <TableRow className="bg-background/50">
-      <TableCell className="pl-10 text-sm">
-        <div>{cc.contacts?.contact_name || "—"}</div>
-        {cc.contacts?.phone_no && (
-          <div className="text-xs text-muted-foreground mt-0.5">{cc.contacts.phone_no}</div>
-        )}
-      </TableCell>
-      <TableCell className="text-sm text-muted-foreground">{cc.contacts?.industry || "—"}</TableCell>
-      <TableCell className="text-sm text-muted-foreground">{cc.contacts?.position || "—"}</TableCell>
-      <TableCell className="text-sm text-muted-foreground">{cc.contacts?.email || "—"}</TableCell>
-      <TableCell>
-        {cc.contacts?.linkedin ? (
-          <a href={cc.contacts.linkedin} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
-            <Linkedin className="h-4 w-4" />
-          </a>
-        ) : <span className="text-muted-foreground text-sm">—</span>}
-      </TableCell>
-      <TableCell>
-        {!isCampaignEnded && (
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setRemoveConfirm({ type: "contact", id: cc.id, name: cc.contacts?.contact_name || "this contact" })}>
-            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-          </Button>
-        )}
-      </TableCell>
-    </TableRow>
-  );
+  const ContactRow = ({ cc, indented = true }: { cc: any; indented?: boolean }) => {
+    const c = cc.contacts || {};
+    return (
+      <TableRow className="hover:bg-muted/30">
+        <TableCell className={indented ? "pl-10" : ""}>
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />
+            <span className="text-sm font-medium">{c.contact_name || "—"}</span>
+          </div>
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">{c.position || "—"}</TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {c.email ? (
+            <a href={`mailto:${c.email}`} className="hover:text-primary hover:underline">{c.email}</a>
+          ) : "—"}
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">{c.phone_no || "—"}</TableCell>
+        <TableCell>
+          {c.linkedin ? (
+            <a href={c.linkedin} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-primary hover:underline">
+              <Linkedin className="h-4 w-4" />
+            </a>
+          ) : <span className="text-muted-foreground text-sm">—</span>}
+        </TableCell>
+        <TableCell>
+          {!isCampaignEnded && (
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setRemoveConfirm({ type: "contact", id: cc.id, name: c.contact_name || "this contact" })}>
+              <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
+          )}
+        </TableCell>
+      </TableRow>
+    );
+  };
 
   const totalAccounts = campaignAccounts.length;
   const totalContacts = campaignContacts.length;
@@ -204,13 +211,13 @@ export function CampaignAudienceTable({ campaignId, isCampaignEnded, selectedReg
         <div className="border rounded-lg overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Industry</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>LinkedIn</TableHead>
-                <TableHead className="w-[120px]">Actions</TableHead>
+              <TableRow className="bg-muted/30">
+                <TableHead className="w-[24%]">Contact Name</TableHead>
+                <TableHead className="w-[16%]">Title</TableHead>
+                <TableHead className="w-[24%]">Email</TableHead>
+                <TableHead className="w-[16%]">Phone</TableHead>
+                <TableHead className="w-[10%]">LinkedIn</TableHead>
+                <TableHead className="w-[10%]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -218,94 +225,131 @@ export function CampaignAudienceTable({ campaignId, isCampaignEnded, selectedReg
                 const accountContacts = getContactsForAccount(ca.account_id);
                 const isExpanded = expandedAccounts.has(ca.account_id);
                 const a = ca.accounts || {};
-                const metaParts = [a.region, a.country].filter(Boolean);
+                const locationParts = [a.region, a.country].filter(Boolean);
+                const visibleContacts = accountContacts.filter(matchContact);
                 return (
-                  <Collapsible key={ca.id} open={isExpanded} onOpenChange={() => toggleExpand(ca.account_id)} asChild>
-                    <>
-                      <CollapsibleTrigger asChild>
-                        <TableRow className="cursor-pointer hover:bg-muted/50 bg-muted/20">
-                          <TableCell className="font-semibold">
-                            <div className="flex items-center gap-2">
-                              {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                              <Building2 className="h-4 w-4 text-muted-foreground" />
-                              <span>{a.account_name || "—"}</span>
-                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-                                {accountContacts.length} contact{accountContacts.length !== 1 ? "s" : ""}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{a.industry || "—"}</TableCell>
-                          <TableCell colSpan={3} className="text-sm text-muted-foreground">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {metaParts.length > 0 && <span>{metaParts.join(" · ")}</span>}
-                              {a.phone && <span className="text-xs">📞 {a.phone}</span>}
-                              {a.website && (
+                  <Fragment key={ca.id}>
+                    {/* Account banner row */}
+                    <TableRow
+                      className="bg-muted/40 hover:bg-muted/60 cursor-pointer border-l-2 border-l-primary/50"
+                      onClick={() => toggleExpand(ca.account_id)}
+                    >
+                      <TableCell colSpan={COLS} className="py-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                            )}
+                            <Building2 className="h-4 w-4 text-primary shrink-0" />
+                            <span className="font-semibold text-sm truncate">{a.account_name || "—"}</span>
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                              {accountContacts.length} contact{accountContacts.length !== 1 ? "s" : ""}
+                            </Badge>
+                            <span className="text-muted-foreground text-xs">·</span>
+                            <span className="text-xs text-muted-foreground">{a.industry || "No industry"}</span>
+                            {locationParts.length > 0 && (
+                              <>
+                                <span className="text-muted-foreground text-xs">·</span>
+                                <span className="text-xs text-muted-foreground">{locationParts.join(" / ")}</span>
+                              </>
+                            )}
+                            {a.phone && (
+                              <>
+                                <span className="text-muted-foreground text-xs">·</span>
+                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Phone className="h-3 w-3" /> {a.phone}
+                                </span>
+                              </>
+                            )}
+                            {a.website && (
+                              <>
+                                <span className="text-muted-foreground text-xs">·</span>
                                 <a
                                   href={a.website.startsWith("http") ? a.website : `https://${a.website}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex items-center text-primary hover:underline"
+                                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                                   title={a.website}
                                 >
-                                  <Globe className="h-3.5 w-3.5" />
+                                  <Globe className="h-3 w-3" /> Website
                                 </a>
-                              )}
-                              {metaParts.length === 0 && !a.phone && !a.website && <span>—</span>}
+                              </>
+                            )}
+                          </div>
+                          {!isCampaignEnded && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAddContactForAccount({ id: ca.account_id, name: a.account_name || "" });
+                                  setAddContactModalOpen(true);
+                                }}
+                              >
+                                <Plus className="h-3 w-3 mr-1" /> Contact
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRemoveConfirm({ type: "account", id: ca.id, name: a.account_name || "this account" });
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                              </Button>
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              {!isCampaignEnded && (
-                                <>
-                                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAddContactForAccount({ id: ca.account_id, name: a.account_name || "" });
-                                    setAddContactModalOpen(true);
-                                  }}>
-                                    <Plus className="h-3 w-3 mr-1" /> Contacts
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => {
-                                    e.stopPropagation();
-                                    setRemoveConfirm({ type: "account", id: ca.id, name: a.account_name || "this account" });
-                                  }}>
-                                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                                  </Button>
-                                </>
-                              )}
-                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* Contact rows */}
+                    {isExpanded && (
+                      visibleContacts.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={COLS} className="pl-10 text-sm text-muted-foreground italic py-2">
+                            No contacts from this account yet.
+                            {!isCampaignEnded && (
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="ml-2 p-0 h-auto"
+                                onClick={() => {
+                                  setAddContactForAccount({ id: ca.account_id, name: a.account_name || "" });
+                                  setAddContactModalOpen(true);
+                                }}
+                              >
+                                Add contacts
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent asChild>
-                        <>
-                          {accountContacts.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={6} className="pl-10 text-sm text-muted-foreground italic py-2">
-                                No contacts from this account yet.
-                                {!isCampaignEnded && (
-                                  <Button variant="link" size="sm" className="ml-2 p-0 h-auto" onClick={() => {
-                                    setAddContactForAccount({ id: ca.account_id, name: a.account_name || "" });
-                                    setAddContactModalOpen(true);
-                                  }}>Add contacts</Button>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ) : accountContacts.filter(matchContact).map((cc: any) => <ContactRow key={cc.id} cc={cc} />)}
-                        </>
-                      </CollapsibleContent>
-                    </>
-                  </Collapsible>
+                      ) : (
+                        visibleContacts.map((cc: any) => <ContactRow key={cc.id} cc={cc} />)
+                      )
+                    )}
+                  </Fragment>
                 );
               })}
 
               {unlinkedContacts.length > 0 && (
                 <>
-                  <TableRow className="bg-muted/10">
-                    <TableCell colSpan={6} className="text-sm font-medium text-muted-foreground py-2">
+                  <TableRow className="bg-muted/40 border-l-2 border-l-muted-foreground/40">
+                    <TableCell colSpan={COLS} className="py-2.5">
                       <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4" /> Unlinked Contacts ({unlinkedContacts.length})
-                        <span className="text-xs font-normal italic">— not linked to any campaign account</span>
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-semibold text-sm">Unlinked Contacts</span>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                          {unlinkedContacts.length}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground italic">— not linked to any campaign account</span>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -315,7 +359,7 @@ export function CampaignAudienceTable({ campaignId, isCampaignEnded, selectedReg
 
               {filteredAccounts.length === 0 && unlinkedContacts.length === 0 && q && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-6">
+                  <TableCell colSpan={COLS} className="text-center text-sm text-muted-foreground py-6">
                     No matches for "{searchQuery}".
                   </TableCell>
                 </TableRow>
