@@ -152,14 +152,6 @@ export function AIGenerateWizard({ open, onOpenChange, campaignId, campaignConte
         campaign_id: campaignId,
         created_by: user!.id,
       });
-    } else if (kind === "linkedin-followup") {
-      await supabase.from("campaign_email_templates").insert({
-        template_name: `AI – LinkedIn FU – ${nameSuffix}`,
-        body: result.body || "",
-        email_type: "LinkedIn-Followup",
-        campaign_id: campaignId,
-        created_by: user!.id,
-      });
     } else if (kind === "phone") {
       await supabase.from("campaign_phone_scripts").insert({
         script_name: `AI – Call Script – ${nameSuffix}`,
