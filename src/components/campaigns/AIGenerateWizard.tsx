@@ -287,12 +287,12 @@ export function AIGenerateWizard({ open, onOpenChange, campaignId, campaignConte
                     </div>
                   )}
 
-                  {item.result && (item.kind === "linkedin-connection" || item.kind === "linkedin-followup") && (
+                  {item.result && item.kind === "linkedin-connection" && (
                     <div>
                       <Label className="text-[11px] text-muted-foreground">
-                        Message ({(item.result.body || "").length} / {item.kind === "linkedin-connection" ? 300 : 1000})
+                        Message ({(item.result.body || "").length} / 300)
                       </Label>
-                      <Textarea value={item.result.body || ""} onChange={(e) => updatePreview(idx, { body: e.target.value })} rows={item.kind === "linkedin-connection" ? 4 : 6} className="text-sm" />
+                      <Textarea value={item.result.body || ""} onChange={(e) => updatePreview(idx, { body: e.target.value })} rows={4} className="text-sm" />
                     </div>
                   )}
 
