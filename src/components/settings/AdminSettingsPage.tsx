@@ -42,6 +42,9 @@ const AdminSettingsPage = ({ defaultSection }: AdminSettingsPageProps) => {
       'audit-logs': 'logs',
       'backup': 'system',
       'system-status': 'system',
+      'suppression': 'compliance',
+      'send-caps': 'compliance',
+      'compliance': 'compliance',
     };
     return sectionToTab[section] || 'users';
   };
@@ -85,7 +88,7 @@ const AdminSettingsPage = ({ defaultSection }: AdminSettingsPageProps) => {
     <div className="space-y-6 w-full">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="sticky top-0 z-10 bg-background pb-2 border-b border-border">
-          <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+          <TabsList className="grid w-full grid-cols-6 max-w-3xl">
             {adminTabs.map(tab => {
               const Icon = tab.icon;
               return (
