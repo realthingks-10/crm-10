@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Lock, History, Activity, BarChart3, Database, ShieldAlert as ShieldAlertIcon, MailWarning } from 'lucide-react';
+import { Users, Lock, History, Activity, BarChart3, Database, ShieldAlert as ShieldAlertIcon, MailWarning, Ban } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,12 +14,15 @@ const UserManagement = lazy(() => import('@/components/UserManagement'));
 const PageAccessSettings = lazy(() => import('@/components/settings/PageAccessSettings'));
 const AuditLogsSettings = lazy(() => import('@/components/settings/AuditLogsSettings'));
 const BackupRestoreSettings = lazy(() => import('@/components/settings/BackupRestoreSettings'));
+const SuppressionListSettings = lazy(() => import('@/components/settings/SuppressionListSettings'));
+const SendCapSettings = lazy(() => import('@/components/settings/SendCapSettings'));
 
 const adminTabs = [
   { id: 'users', label: 'Users', icon: Users },
   { id: 'access', label: 'Access', icon: Lock },
   { id: 'logs', label: 'Logs', icon: History },
   { id: 'system', label: 'System', icon: Activity },
+  { id: 'compliance', label: 'Compliance', icon: Ban },
   { id: 'reports', label: 'Reports', icon: BarChart3 }
 ];
 
