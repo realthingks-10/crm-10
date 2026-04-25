@@ -11,6 +11,8 @@ import { CampaignAudience } from "./CampaignAudience";
 import { CampaignRegion } from "./CampaignRegion";
 import { CampaignTiming } from "./CampaignTiming";
 import { FollowUpRulesPanel } from "./FollowUpRulesPanel";
+import { SequencesPanel } from "./SequencesPanel";
+import { SegmentManager } from "./SegmentManager";
 import type { Campaign } from "@/hooks/useCampaigns";
 
 interface Props {
@@ -312,6 +314,8 @@ export function CampaignStrategy({ campaignId, campaign, isStrategyComplete, upd
       </div>
 
       <FollowUpRulesPanel campaignId={campaignId} />
+      <SequencesPanel campaignId={campaignId} />
+      <SegmentManager campaignId={campaignId} />
     </div>
   );
 }
