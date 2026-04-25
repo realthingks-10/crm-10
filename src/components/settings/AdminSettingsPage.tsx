@@ -145,6 +145,15 @@ const AdminSettingsPage = ({ defaultSection }: AdminSettingsPageProps) => {
           </SettingsCard>
         </TabsContent>
 
+        <TabsContent value="compliance" className="mt-6 space-y-6">
+          <Suspense fallback={<SettingsLoadingSkeleton />}>
+            <SuppressionListSettings />
+          </Suspense>
+          <Suspense fallback={<SettingsLoadingSkeleton />}>
+            <SendCapSettings />
+          </Suspense>
+        </TabsContent>
+
         <TabsContent value="reports" className="mt-6 space-y-6">
           <Card>
             <CardContent className="py-8">
