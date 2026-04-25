@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { getAzureEmailConfig, getGraphAccessToken, sendEmailViaGraph, type GraphAttachment } from "../_shared/azure-email.ts";
+import { findSentMessageGraphId, getAzureEmailConfig, getGraphAccessToken, sendEmailViaGraph, type GraphAttachment } from "../_shared/azure-email.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,9 +28,27 @@ interface EmailRequest {
 
 const MAX_TOTAL_ATTACHMENT_BYTES = 9 * 1024 * 1024; // ~9MB safe ceiling under Graph 10MB
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function ensureHtmlBody(body: string): string {
-  if (/<[a-z][\s\S]*>/i.test(body)) return body;
-  return body.replace(/\n/g, '<br>');
+  // If body already contains block-level HTML, leave as-is.
+  if (/<(p|div|br|table|ul|ol|h[1-6]|blockquote|section|article)\b/i.test(body)) {
+    return body;
+  }
+  // Convert plain text → paragraph-aware HTML so blank lines render as spacing
+  // and single newlines as <br>. Mirrors what the Preview tab shows (whitespace-pre-wrap).
+  const blocks = body.replace(/\r\n/g, "\n").split(/\n{2,}/);
+  return blocks
+    .map(block => {
+      const inner = escapeHtml(block).replace(/\n/g, "<br>");
+      return `<p style="margin:0 0 1em 0; line-height:1.5;">${inner}</p>`;
+    })
+    .join("");
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -92,13 +110,17 @@ async function buildAttachments(
 async function resolveSenderEmail(supabaseClient: any, user: { id: string; email?: string | null }) {
   const { data: profile } = await supabaseClient
     .from("profiles")
-    .select('full_name, "Email ID"')
+    .select('full_name, "Email ID", email_signature')
     .eq("id", user.id)
     .maybeSingle();
 
   const profileEmail = profile?.["Email ID"]?.trim();
   const authEmail = user.email?.trim();
-  return profileEmail || authEmail || null;
+  return {
+    email: profileEmail || authEmail || null,
+    signature: profile?.email_signature || null,
+    fullName: profile?.full_name || null,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -135,6 +157,34 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Guard: do not allow sending for campaigns that are ended, paused, or archived.
+    if (payload.campaign_id) {
+      const { data: campaignRow } = await supabaseClient
+        .from("campaigns")
+        .select("status, end_date, archived_at")
+        .eq("id", payload.campaign_id)
+        .maybeSingle();
+      if (campaignRow) {
+        const today = new Date().toISOString().slice(0, 10);
+        const ended = !!campaignRow.end_date && campaignRow.end_date < today;
+        const blockedStatus = campaignRow.status === "Completed" || campaignRow.status === "Paused";
+        if (campaignRow.archived_at || ended || blockedStatus) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: campaignRow.archived_at
+              ? "This campaign is archived; outreach is disabled."
+              : ended
+                ? "This campaign has passed its end date; outreach is disabled."
+                : "This campaign is not active; outreach is disabled.",
+            errorCode: "CAMPAIGN_NOT_ACTIVE",
+          }), {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
     const azureConfig = getAzureEmailConfig();
     if (!azureConfig) {
       return new Response(JSON.stringify({
@@ -147,7 +197,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const senderEmail = await resolveSenderEmail(supabaseClient, user);
+    const senderInfo = await resolveSenderEmail(supabaseClient, user);
+    const senderEmail = senderInfo.email;
     if (!senderEmail) {
       return new Response(JSON.stringify({
         success: false,
@@ -157,6 +208,41 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ── Suppression list check (GDPR/CAN-SPAM) ─────────────────────────
+    {
+      const { data: suppressed } = await supabaseClient.rpc("is_email_suppressed", {
+        _email: payload.recipient_email,
+      });
+      if (suppressed === true) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "This recipient has unsubscribed or is on the suppression list.",
+          errorCode: "SUPPRESSED",
+        }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // ── Send-cap enforcement ──────────────────────────────────────────
+    if (payload.campaign_id) {
+      const { data: capCheck } = await supabaseClient.rpc("check_send_cap", {
+        _campaign_id: payload.campaign_id,
+      });
+      if (capCheck && capCheck.allowed === false) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: `Send cap reached: ${capCheck.hourly_used}/${capCheck.hourly_limit} this hour, ${capCheck.daily_used}/${capCheck.daily_limit} today. Try again later.`,
+          errorCode: "SEND_CAP_EXCEEDED",
+          capDetails: capCheck,
+        }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const mailboxEmail = azureConfig.senderEmail;
@@ -212,6 +298,7 @@ Deno.serve(async (req) => {
     }
 
     // If reply, lookup parent metadata
+    let replyToGraphMessageId: string | undefined;
     let replyToInternetMessageId: string | undefined;
     let fallbackConversationId: string | null = null;
     if (payload.parent_id) {
@@ -220,18 +307,44 @@ Deno.serve(async (req) => {
       }
       const { data: parentComm } = await supabaseClient
         .from("campaign_communications")
-        .select("internet_message_id, conversation_id")
+        .select("graph_message_id, internet_message_id, conversation_id")
         .eq("id", payload.parent_id)
         .single();
+      if (parentComm?.graph_message_id) {
+        replyToGraphMessageId = parentComm.graph_message_id;
+      }
       if (!replyToInternetMessageId && parentComm?.internet_message_id) {
         replyToInternetMessageId = parentComm.internet_message_id;
       }
       if (parentComm?.conversation_id) {
         fallbackConversationId = parentComm.conversation_id;
       }
+      if (!replyToGraphMessageId) {
+        replyToGraphMessageId = await findSentMessageGraphId(
+          accessToken,
+          senderEmail,
+          replyToInternetMessageId,
+          fallbackConversationId,
+        );
+      }
     }
 
-    const htmlBody = ensureHtmlBody(payload.body);
+    // Generate tracking ID up-front so the pixel URL embedded in the email
+    // matches the row we're about to insert.
+    const trackingId = crypto.randomUUID();
+    const trackingPixelUrl = `${supabaseUrl}/functions/v1/email-track?t=${trackingId}`;
+    const trackingPixel = `<img src="${trackingPixelUrl}" width="1" height="1" alt="" style="display:none !important;border:0;outline:0;" />`;
+
+    // ── Append signature + unsubscribe footer (compliance) ────────────
+    const baseHtmlBody = ensureHtmlBody(payload.body);
+    const signatureHtml = senderInfo.signature
+      ? `<div style="margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;color:#475569;font-size:13px;">${senderInfo.signature}</div>`
+      : "";
+    const unsubscribeUrl = `${supabaseUrl}/functions/v1/unsubscribe?e=${encodeURIComponent(payload.recipient_email)}${payload.campaign_id ? `&c=${payload.campaign_id}` : ""}`;
+    const footerHtml = `<div style="margin-top:18px;color:#94a3b8;font-size:11px;line-height:1.5;">
+      You received this because you may be interested in our service. <a href="${unsubscribeUrl}" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a>.
+    </div>`;
+    const htmlBody = `${baseHtmlBody}${signatureHtml}${footerHtml}${trackingPixel}`;
 
     const result = await sendEmailViaGraph(
       accessToken,
@@ -241,7 +354,8 @@ Deno.serve(async (req) => {
       payload.subject,
       htmlBody,
       senderEmail,
-      replyToInternetMessageId,
+      replyToGraphMessageId,
+      replyToGraphMessageId ? replyToInternetMessageId : undefined,
       attachments,
     );
 
@@ -271,6 +385,7 @@ Deno.serve(async (req) => {
         graph_message_id: result.graphMessageId || null,
         internet_message_id: result.internetMessageId || null,
         conversation_id: conversationId,
+        tracking_id: trackingId,
         owner: user.id,
         created_by: user.id,
         notes: result.error ? `Send error: ${result.error.substring(0, 500)}` : null,
@@ -296,6 +411,15 @@ Deno.serve(async (req) => {
       sent_at: new Date().toISOString(),
       internet_message_id: result.internetMessageId || null,
     });
+
+    // Ledger row for cap enforcement (only on actual sends).
+    if (result.success) {
+      await supabaseClient.from("campaign_send_log").insert({
+        campaign_id: payload.campaign_id || null,
+        contact_id: payload.contact_id || null,
+        sender_user_id: user.id,
+      });
+    }
 
     return new Response(
       JSON.stringify({
