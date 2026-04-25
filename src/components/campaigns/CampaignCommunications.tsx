@@ -27,6 +27,7 @@ import { SyncStatusPill } from "./SyncStatusPill";
 import { isReachableEmail, isReachableLinkedIn, isReachablePhone, normalizeChannel, channelLabel, formatPhoneForDisplay } from "@/lib/email";
 import { areSubjectsCompatible } from "@/utils/subjectNormalize";
 import { Link, useSearchParams } from "react-router-dom";
+import { ReplyIntentBadge } from "./ReplyIntentBadge";
 
 interface Props {
   campaignId: string;
@@ -1119,7 +1120,12 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
     { key: "contact", label: "Contact", render: (c) => <span className="font-medium">{c.contacts?.contact_name || "—"}</span> },
     { key: "account", label: "Account", render: (c) => c.accounts?.account_name || "—" },
     { key: "subject", label: "Subject", render: (c) => <span className="truncate max-w-[200px] block">{c.subject || "—"}</span> },
-    { key: "status", label: "Status", render: (c) => c.email_status || "—" },
+    { key: "status", label: "Status", render: (c) => (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span>{c.email_status || "—"}</span>
+        {c.reply_intent && <ReplyIntentBadge intent={c.reply_intent} />}
+      </div>
+    ) },
     { key: "delivery", label: "Delivery", render: (c) => deliveryBadge(c.communication_type, c.delivery_status) },
     { key: "owner", label: "Owner", render: (c) => <span className="text-sm">{c.owner ? displayNames[c.owner] || "—" : "—"}</span> },
   ];
@@ -1265,6 +1271,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
                         {msg.body && <p className="text-muted-foreground whitespace-pre-wrap mt-0.5 text-xs">{msg.body.substring(0, 200)}{msg.body.length > 200 ? "..." : ""}</p>}
                         {msg.notes && <p className="text-xs italic text-muted-foreground mt-0.5">Note: {msg.notes}</p>}
                         {msg.email_status && <span className="text-xs text-muted-foreground">Status: {msg.email_status}</span>}
+                        {msg.reply_intent && <span className="ml-2"><ReplyIntentBadge intent={msg.reply_intent} /></span>}
                         {msg.call_outcome && <span className="text-xs text-muted-foreground">Outcome: {msg.call_outcome}</span>}
                         {msg.linkedin_status && <span className="text-xs text-muted-foreground">LinkedIn: {msg.linkedin_status}</span>}
                       </div>
