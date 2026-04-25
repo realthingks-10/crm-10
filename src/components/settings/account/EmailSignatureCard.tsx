@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Loader2, MailSignature, Sparkles } from "lucide-react";
+import { Loader2, FileSignature, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -86,7 +86,7 @@ const EmailSignatureCard = ({ userId, fullName, email }: EmailSignatureCardProps
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <MailSignature className="h-4 w-4" />
+          <FileSignature className="h-4 w-4" />
           Email Signature
         </CardTitle>
       </CardHeader>
