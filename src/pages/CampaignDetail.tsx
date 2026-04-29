@@ -63,6 +63,7 @@ type CampaignDrilldown =
 export default function CampaignDetail() {
   const { id: rawId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Resolve slug → UUID via a lightweight scoped query (no full campaigns list).
   const { id } = useCampaignIdFromSlug(rawId);
@@ -75,6 +76,24 @@ export default function CampaignDetail() {
     if (next.tab === "monitoring") setMonitoringView(next.view);
     setActiveTab(next.tab);
   };
+
+  // Honor ?tab= deep-link (and map legacy `tasks` alias → `actionItems`).
+  useEffect(() => {
+    const raw = searchParams.get("tab");
+    if (!raw) return;
+    const mapped = raw === "tasks" ? "actionItems" : raw;
+    const allowed = ["overview", "setup", "monitoring", "actionItems"];
+    if (allowed.includes(mapped)) {
+      setActiveTab(mapped);
+    }
+    if (raw === "tasks") {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", "actionItems");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const enabledTabs = useMemo<CampaignDetailEnabledTabs>(() => ({
     overview: true, // always needed for the default landing tab
     setup: activeTab === "setup",
