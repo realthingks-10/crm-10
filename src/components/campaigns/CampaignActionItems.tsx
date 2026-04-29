@@ -82,7 +82,7 @@ export function CampaignActionItems({ campaignId }: Props) {
   const ownerIds = [...new Set(actionItems.map((i) => i.assigned_to).filter(Boolean))] as string[];
   const { displayNames } = useUserDisplayNames(ownerIds);
 
-  // Listen for "Add Task" events from Contacts tab
+  // Listen for "Add Action Item" events from Contacts tab
   useEffect(() => {
     const handler = (e: any) => {
       const { contactId, accountId } = e.detail || {};
@@ -127,7 +127,7 @@ export function CampaignActionItems({ campaignId }: Props) {
     await logCreate('action_items', '', { title: form.title, module_type: 'campaigns', campaign_id: campaignId });
     setShowInlineForm(false);
     setForm({ title: "", description: "", priority: "Medium", due_date: "", contact_id: "", account_id: "" });
-    toast({ title: "Task created" });
+    toast({ title: "Action item created" });
   };
 
   const updateStatus = async (id: string, status: string) => {
@@ -146,7 +146,7 @@ export function CampaignActionItems({ campaignId }: Props) {
     queryClient.invalidateQueries({ queryKey: ["action-items"] });
     await logDelete('action_items', deleteConfirm, item);
     setDeleteConfirm(null);
-    toast({ title: "Task deleted" });
+    toast({ title: "Action item deleted" });
   };
 
   const openEdit = (item: any) => {
@@ -170,7 +170,7 @@ export function CampaignActionItems({ campaignId }: Props) {
     queryClient.invalidateQueries({ queryKey: ["campaign-action-items", campaignId] });
     queryClient.invalidateQueries({ queryKey: ["action-items"] });
     setEditItem(null);
-    toast({ title: "Task updated" });
+    toast({ title: "Action item updated" });
   };
 
   const today = new Date().toISOString().split("T")[0];
@@ -224,7 +224,7 @@ export function CampaignActionItems({ campaignId }: Props) {
               </Select>
             )}
             <Button size="sm" onClick={() => setShowInlineForm(!showInlineForm)}>
-              <Plus className="h-4 w-4 mr-1" /> Add Task
+              <Plus className="h-4 w-4 mr-1" /> Add Action Item
             </Button>
           </div>
         </CardHeader>
@@ -235,7 +235,7 @@ export function CampaignActionItems({ campaignId }: Props) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Title *</Label>
-                  <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Task title..." className="h-8 text-sm" />
+                  <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Action item title..." className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Contact</Label>
@@ -286,7 +286,7 @@ export function CampaignActionItems({ campaignId }: Props) {
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" size="sm" onClick={() => setShowInlineForm(false)}>Cancel</Button>
-                <Button size="sm" onClick={handleCreate} disabled={!form.title.trim()}>Save Task</Button>
+                <Button size="sm" onClick={handleCreate} disabled={!form.title.trim()}>Save Action Item</Button>
               </div>
             </div>
           )}
@@ -294,11 +294,11 @@ export function CampaignActionItems({ campaignId }: Props) {
           {filtered.length === 0 && !showInlineForm ? (
             <div className="text-center py-8">
               <p className="text-sm text-muted-foreground">
-                {actionItems.length === 0 ? "No tasks yet. Create follow-up tasks for this campaign." : "No tasks match the selected filters."}
+                {actionItems.length === 0 ? "No action items yet. Create follow-up action items for this campaign." : "No action items match the selected filters."}
               </p>
               {actionItems.length === 0 && (
                 <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowInlineForm(true)}>
-                  <Plus className="h-4 w-4 mr-1" /> Create your first task
+                  <Plus className="h-4 w-4 mr-1" /> Create your first action item
                 </Button>
               )}
             </div>
@@ -368,7 +368,7 @@ export function CampaignActionItems({ campaignId }: Props) {
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Task</AlertDialogTitle>
+            <AlertDialogTitle>Delete Action Item</AlertDialogTitle>
             <AlertDialogDescription>Are you sure? This cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -378,10 +378,10 @@ export function CampaignActionItems({ campaignId }: Props) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit Task Modal */}
+      {/* Edit Action Item Modal */}
       <Dialog open={!!editItem} onOpenChange={(open) => !open && setEditItem(null)}>
         <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader><DialogTitle>Edit Task</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Edit Action Item</DialogTitle></DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label>Title *</Label>

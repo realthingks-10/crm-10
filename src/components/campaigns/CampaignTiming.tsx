@@ -57,8 +57,8 @@ export function CampaignTiming({ campaign, isCampaignEnded, daysRemaining, timin
   const channelOptions = useMemo(() => {
     const opts: Array<{ value: "email" | "linkedin" | "call"; label: string }> = [];
     if (enabledChannels.includes("Email")) opts.push({ value: "email", label: "Email" });
-    if (enabledChannels.includes("LinkedIn")) opts.push({ value: "linkedin", label: "LinkedIn task" });
-    if (enabledChannels.includes("Phone")) opts.push({ value: "call", label: "Call task" });
+    if (enabledChannels.includes("LinkedIn")) opts.push({ value: "linkedin", label: "LinkedIn step" });
+    if (enabledChannels.includes("Phone")) opts.push({ value: "call", label: "Call step" });
     return opts;
   }, [enabledChannels]);
   const [stepType, setStepType] = useState<string>(channelOptions[0]?.value ?? "email");
@@ -479,7 +479,7 @@ export function CampaignTiming({ campaign, isCampaignEnded, daysRemaining, timin
                     ? segments.find((sg: any) => sg.id === s.target_segment_id)?.segment_name
                     : null;
                   const stepLabel = (s.step_type && s.step_type !== "email")
-                    ? `${s.step_type === "linkedin" ? "LinkedIn" : "Call"} task`
+                    ? `${s.step_type === "linkedin" ? "LinkedIn" : "Call"} step`
                     : (tpl?.template_name || "(deleted template)");
                   const showChannelIcon = channelOptions.length > 1;
                   const m = (stepMetrics as any)[s.id];

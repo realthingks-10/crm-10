@@ -218,7 +218,7 @@ const NotificationsSection = ({ notificationPrefs, setNotificationPrefs, userId,
               <ListChecks className="h-4 w-4 text-muted-foreground" />
               <div>
                 <Label className="text-sm font-medium">Action Item Reminders</Label>
-                <p className="text-xs text-muted-foreground">Overdue and high-priority task alerts</p>
+                <p className="text-xs text-muted-foreground">Overdue and high-priority action item alerts</p>
               </div>
             </div>
             <Switch

@@ -1,46 +1,48 @@
-## Fix: Campaign Module — Standardize "Action Item" Terminology
+I found the remaining inconsistent labels. The visible “Task” text is still coming mainly from the Campaign Action Items tab shown in your screenshot, plus a few campaign timing labels and one broken navigation alias.
 
-### Root Cause
-The CRM's canonical name for this entity is **"Action Item"** (sidebar nav, `/action-items` page, `action_items` table, `CampaignActionItems` tab, `UpcomingActionItems` widget). However, **`CampaignCommunications.tsx`** — the Outlook-style 2-pane view used in the Communications tab — was built using the word **"Task"** throughout its UI strings, modal titles, and toast messages. This produces the inconsistency visible in the screenshot (a "Task" button on a thread card, while the same record shows up under the "Action Items" tab).
+Plan to fix all of this:
 
-The records themselves are stored in `action_items` and surface correctly under the Action Items tab — only the labels in `CampaignCommunications.tsx` are wrong.
+1. Standardize Campaign Action Items UI
+   - In `CampaignActionItems.tsx`, replace all user-facing “Task/tasks” text with “Action Item/action items”.
+   - This includes:
+     - `Add Task` → `Add Action Item`
+     - `Save Task` → `Save Action Item`
+     - `Task title...` → `Action item title...`
+     - `Task created/deleted/updated` → `Action item created/deleted/updated`
+     - `No tasks yet...` → `No action items yet...`
+     - `Create your first task` → `Create your first action item`
+     - `Delete Task` / `Edit Task` → `Delete Action Item` / `Edit Action Item`
+   - Also update visible comments only where they can cause future confusion.
 
-A small secondary inconsistency exists in `CampaignSequenceRunsDrawer.tsx`: the audit-log filter dropdown labels the `action_item_created` event as just **"Action item"** (lowercase 'i') instead of **"Action Item"**.
+2. Standardize campaign sequence/timing labels
+   - In `CampaignTiming.tsx`, replace non-email follow-up labels:
+     - `LinkedIn task` → `LinkedIn step`
+     - `Call task` → `Call step`
+     - rendered step labels like `Call task` / `LinkedIn task` → `Call step` / `LinkedIn step`
+   - This keeps “task” reserved nowhere in Campaign UI and aligns with sequence terminology.
 
-### Scope of Changes (UI strings only — no data, no logic)
+3. Fix Action Items → Campaign navigation alias
+   - In `ActionItemsTable.tsx`, change the campaign link from `?tab=tasks` to the correct `?tab=actionItems`.
+   - In `CampaignDetail.tsx`, add URL tab handling so links like `?tab=actionItems` open the Action Items tab reliably.
+   - Optionally support legacy `?tab=tasks` by redirecting/mapping it to `actionItems` so old links do not break.
 
-**1. `src/components/campaigns/CampaignCommunications.tsx`** — replace all "Task" wording with "Action Item":
+4. Keep internal variable names only where safe
+   - Internal identifiers like `task_reminders`, `taskModalOpen`, `handleCreateTask`, or database/internal event names can remain if they are not displayed to users.
+   - I will change user-facing labels, placeholders, tooltips, toasts, and route query values, but avoid unnecessary refactors that could break existing saved preferences or database fields.
 
-| Line | Current | Change to |
-|---|---|---|
-| 130 | toast `"Task created"` | `"Action item created"` |
-| 149 | toast `"Task deleted"` | `"Action item deleted"` |
-| 173 | toast `"Task updated"` | `"Action item updated"` |
-| 744 | toast `"Task title is required"` | `"Action item title is required"` |
-| 767 | toast `"Task created"` | `"Action item created"` |
-| 1443 | thread-card button label `Task` (the one in the screenshot) | `Action Item` |
-| 1685 | selected-thread header button `Task` | `Action Item` |
-| 2719 | modal title `Create Follow-up Task` | `Create Follow-up Action Item` |
-| 2744 | input placeholder `Task title...` | `Action item title...` |
-| 2770 | modal submit button `Create Task` | `Create Action Item` |
-| 2716 | comment `{/* Create Task Modal */}` | `{/* Create Action Item Modal */}` |
+5. Remove LinkedIn Follow-up from AI generation and keep only 3 message-section outputs
+   - In `AIGenerateWizard.tsx`, remove `linkedin-followup` from the visible AI generation options and the default channel-kind mapping.
+   - The Generate with AI modal will only offer the three message section types:
+     - Email
+     - LinkedIn Connection / LinkedIn Message
+     - Call Script
+   - This prevents the fourth “LinkedIn Follow-up” AI card from coming back.
+   - Keep existing saved LinkedIn follow-up records readable where needed, so old data does not disappear or crash the UI.
 
-State variable names (`taskModalOpen`, `taskForm`, `taskContactId`, `handleCreateTask`, `openTaskForContact`) are **internal** and will be left unchanged to keep the diff minimal and avoid touching unrelated logic — only user-visible strings change.
+6. Clean related visible wording outside the campaign screen
+   - In notification settings, update visible copy like `task alerts` to `action item alerts`.
+   - Leave internal preference key `task_reminders` unchanged because it is likely a stored settings field.
 
-**2. `src/components/campaigns/CampaignSequenceRunsDrawer.tsx`** (line 23):
-- `label: "Action item"` → `label: "Action Item"` (capitalize for consistency with the rest of the UI).
-
-**3. `src/components/campaigns/overview/UpcomingActionItems.tsx`** (line 68):
-- Empty-state text `"No upcoming action items"` is fine as a sentence — leave as-is. (Sentence-case body copy is acceptable; we only standardize labels/buttons/titles.)
-
-### Other Naming Audited and Found Consistent
-Reviewed the rest of the campaign module for similar duplicate terminology and found no further mismatches worth changing in this pass:
-- "Audience / Recipient / Contact" — used appropriately in distinct contexts (Audience = the configured target list, Recipient = a specific row in a send, Contact = the underlying CRM entity).
-- "Sequence / Cadence / Follow-up" — only "Sequence" and "Follow-up" are user-facing; both are used correctly (Sequence = the configured multi-step template, Follow-up = an individual delayed send).
-- "Email / Message" — "Message" is used only as the tab/strategy label that wraps email content (consistent with existing `CampaignMessage` component name).
-
-### Files Modified
-- `src/components/campaigns/CampaignCommunications.tsx`
-- `src/components/campaigns/CampaignSequenceRunsDrawer.tsx`
-
-No DB migrations, no logic changes, no other components affected.
+7. Verification search
+   - After edits, run a targeted search across campaign components and related Action Item files to verify no visible `Task`, `tasks`, `LinkedIn task`, `Call task`, or `?tab=tasks` remains.
+   - Remaining lowercase/internal `task` references will be checked and only left if they are non-UI implementation details or database field names.
