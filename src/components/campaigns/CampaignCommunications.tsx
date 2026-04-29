@@ -1448,7 +1448,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
                       {thread.channelCounts.Call > 0 && <Badge variant="secondary" className="text-[10px] gap-0.5"><Phone className="h-2.5 w-2.5" />{thread.channelCounts.Call}</Badge>}
                       {thread.channelCounts.LinkedIn > 0 && <Badge variant="secondary" className="text-[10px] gap-0.5"><MessageSquare className="h-2.5 w-2.5" />{thread.channelCounts.LinkedIn}</Badge>}
                       {!isCampaignEnded && (
-                        <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-0.5" onClick={(e) => { e.stopPropagation(); openTaskForContact(thread.contactId, thread.contactName); }}>
+                        <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-0.5" onClick={(e) => { e.stopPropagation(); openTaskForContact(thread.contactId, thread.contactName, thread.threadKey); }}>
                           <ListChecks className="h-3 w-3" /> Action Item
                         </Button>
                       )}
@@ -1689,7 +1689,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs gap-1"
-                            onClick={() => openTaskForContact(selectedThread.contactId, selectedThread.contactName)}
+                            onClick={() => openTaskForContact(selectedThread.contactId, selectedThread.contactName, selectedThread.threadKey)}
                           >
                             <ListChecks className="h-3 w-3" /> Action Item
                           </Button>
