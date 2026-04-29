@@ -387,7 +387,8 @@ export function CampaignActionItems({ campaignId }: Props) {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
