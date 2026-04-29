@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, CheckSquare, Trash2, Check, Pencil } from "lucide-react";
+import { Plus, CheckSquare, Trash2, Check, Pencil, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 import { useCRUDAudit } from "@/hooks/useCRUDAudit";
+import { useSearchParams } from "react-router-dom";
 
 interface Props {
   campaignId: string;
@@ -31,6 +32,7 @@ const priorityColors: Record<string, string> = {
 export function CampaignActionItems({ campaignId }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [, setSearchParams] = useSearchParams();
   const { logCreate, logUpdate, logDelete } = useCRUDAudit();
   const [showInlineForm, setShowInlineForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -185,6 +187,19 @@ export function CampaignActionItems({ campaignId }: Props) {
     if (!desc) return null;
     const match = desc.match(/Account: (.+?)(\s*\||\s*$)/);
     return match ? match[1] : null;
+  };
+  const getThreadKeyFromDescription = (desc: string | null) => {
+    if (!desc) return null;
+    const match = desc.match(/\[thread:([^\]]+)\]/);
+    return match ? match[1] : null;
+  };
+  const openThread = (threadKey: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("tab", "monitoring");
+      next.set("thread", threadKey);
+      return next;
+    }, { replace: false });
   };
 
   // Filtered items
