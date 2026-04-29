@@ -35,14 +35,13 @@ interface Props {
 
 const CHANNEL_TO_KINDS: Record<Channel, AiKind[]> = {
   Email: ["email"],
-  LinkedIn: ["linkedin-connection", "linkedin-followup"],
+  LinkedIn: ["linkedin-connection"],
   Phone: ["phone"],
 };
 
 const KIND_OPTIONS: { id: AiKind; label: string; icon: typeof Mail }[] = [
   { id: "email", label: "Email", icon: Mail },
-  { id: "linkedin-connection", label: "LinkedIn Connection", icon: Linkedin },
-  { id: "linkedin-followup", label: "LinkedIn Follow-up", icon: Linkedin },
+  { id: "linkedin-connection", label: "LinkedIn Message", icon: Linkedin },
   { id: "phone", label: "Call Script", icon: Phone },
 ];
 

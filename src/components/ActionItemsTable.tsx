@@ -458,7 +458,7 @@ export function ActionItemsTable({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            onClick={e => { e.stopPropagation(); navigate(`/campaigns/${item.module_id}?tab=tasks`); }}
+                            onClick={e => { e.stopPropagation(); navigate(`/campaigns/${item.module_id}?tab=actionItems`); }}
                             className="h-7 px-2 flex items-center gap-1 rounded hover:bg-muted/50 text-primary mx-auto"
                           >
                             <Megaphone className="h-3.5 w-3.5" />
