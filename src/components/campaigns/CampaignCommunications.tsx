@@ -75,6 +75,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
   const [replyContext, setReplyContext] = useState<{ parent_id: string; thread_id: string | null; subject: string; contactId: string; internet_message_id?: string | null } | undefined>(undefined);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskContactId, setTaskContactId] = useState("");
+  const [taskThreadKey, setTaskThreadKey] = useState<string>("");
   const [taskForm, setTaskForm] = useState({ title: "", description: "", due_date: "", priority: "Medium" });
   const [accountFilter, setAccountFilter] = useState("all");
   const [contactFilter, setContactFilter] = useState("all");
@@ -753,6 +754,10 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
       const prefix = `Contact: ${contactName}${accountName ? ` | Account: ${accountName}` : ""}`;
       enrichedDescription = enrichedDescription ? `${prefix}\n${enrichedDescription}` : prefix;
     }
+    // Append thread reference tag so the action item links back to the email thread
+    if (taskThreadKey) {
+      enrichedDescription = `${enrichedDescription}${enrichedDescription ? "\n" : ""}[thread:${taskThreadKey}]`;
+    }
     const { data: inserted, error } = await supabase.from("action_items").insert({
       title: taskForm.title, description: enrichedDescription || null,
       due_date: taskForm.due_date || null, priority: taskForm.priority,
@@ -761,14 +766,18 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
     }).select("id").single();
     if (error) { toast({ title: "Error creating action item", description: error.message, variant: "destructive" }); return; }
     await logCreate('action_items', inserted?.id || '', { title: taskForm.title, module_type: 'campaigns', campaign_id: campaignId, contact_id: taskContactId });
+    queryClient.invalidateQueries({ queryKey: ["campaign-action-items", campaignId] });
+    queryClient.invalidateQueries({ queryKey: ["action-items"] });
     setTaskModalOpen(false);
     setTaskForm({ title: "", description: "", due_date: "", priority: "Medium" });
     setTaskContactId("");
+    setTaskThreadKey("");
     toast({ title: "Action item created" });
   };
 
-  const openTaskForContact = (contactId: string, contactName: string) => {
+  const openTaskForContact = (contactId: string, contactName: string, threadKey?: string) => {
     setTaskContactId(contactId);
+    setTaskThreadKey(threadKey || "");
     setTaskForm({ title: `Follow up with ${contactName}`, description: "", due_date: "", priority: "Medium" });
     setTaskModalOpen(true);
   };
