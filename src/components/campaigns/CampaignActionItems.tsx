@@ -332,10 +332,25 @@ export function CampaignActionItems({ campaignId }: Props) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((item) => (
+                {filtered.map((item) => {
+                  const threadKey = getThreadKeyFromDescription(item.description);
+                  return (
                   <TableRow key={item.id} className={cn(isOverdue(item) && "border-l-4 border-l-yellow-500")}>
                     <TableCell>
-                      <p className="font-medium text-sm">{item.title}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm">{item.title}</p>
+                        {threadKey && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            title="Open email thread"
+                            onClick={() => openThread(threadKey)}
+                          >
+                            <Mail className="h-3.5 w-3.5 text-primary" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">{getContactFromDescription(item.description) || "—"}</TableCell>
                     <TableCell className="text-sm">{getAccountFromDescription(item.description) || "—"}</TableCell>
