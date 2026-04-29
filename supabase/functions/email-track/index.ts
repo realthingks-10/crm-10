@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
 
     const { data: existing } = await supabase
       .from("campaign_communications")
-      .select("id, opened_at, open_count, is_bot_open, communication_date")
+      .select("id, opened_at, open_count, last_opened_at, is_bot_open, communication_date")
       .eq("tracking_id", tracking)
       .maybeSingle();
 
@@ -92,12 +92,22 @@ Deno.serve(async (req) => {
       const now = new Date().toISOString();
       const isBot = looksLikeBot(req);
 
-      // Suppress prefetch opens that fire within 30 seconds of send
-      // (almost always a scanner — humans do not open emails this fast).
+      // Bot heuristic v2:
+      //   - Real users almost never open in <5s (was 30s — that suppressed many
+      //     warm intros where the recipient was already in the inbox).
+      //   - At <5s we still want a corroborating signal before flagging a bot:
+      //     either the UA looks like a known scanner, OR a second open lands
+      //     within 2s of the first (classic prefetch double-tap).
       const sentAt = existing.communication_date ? new Date(existing.communication_date).getTime() : 0;
-      const veryFast = sentAt && (Date.now() - sentAt) < 30_000;
+      const sinceSendMs = sentAt ? Date.now() - sentAt : Number.POSITIVE_INFINITY;
+      const lastOpenMs = existing.last_opened_at ? Date.now() - new Date(existing.last_opened_at).getTime() : Number.POSITIVE_INFINITY;
+      const veryFast = sentAt && sinceSendMs < 5_000;
+      const burst = lastOpenMs < 2_000;
 
-      const treatAsBot = isBot || veryFast;
+      // Treat as bot when:
+      //   1) UA matches a known scanner, OR
+      //   2) Open is <5s post-send AND we see a corroborating signal (UA OR burst).
+      const treatAsBot = isBot || (veryFast && (isBot || burst));
 
       const update: Record<string, unknown> = {
         last_opened_at: now,

@@ -68,19 +68,33 @@ function normalizeSubject(subject: string | null | undefined): string {
     .toLowerCase();
 }
 
+/**
+ * Resolve the just-sent message in Sent Items. Strategy (most reliable first):
+ *   1. Match by `correlationToken` embedded in the HTML body — survives any
+ *      subject localisation, "Re:" stacking, and Outlook prefix mutation.
+ *   2. Fallback: subject-normalize + recipient match.
+ *   3. Fallback: most recent message to that recipient.
+ *
+ * Retry budget: 8 attempts with exponential backoff (0.5s → 8s, capped),
+ * total ~16s. Graph's Sent Items indexing latency for a brand-new send can
+ * exceed 7s on first writes; the previous 5×1.5s budget was insufficient.
+ */
 async function fetchSentMessageMetadata(
   accessToken: string,
   mailboxEmail: string,
   subject: string,
   recipientEmail: string,
+  correlationToken?: string,
 ): Promise<Pick<SendEmailResult, "graphMessageId" | "internetMessageId" | "conversationId">> {
-  const sentItemsUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailboxEmail)}/mailFolders/sentitems/messages?$top=10&$orderby=sentDateTime desc&$select=id,internetMessageId,conversationId,subject,toRecipients`;
+  const selectFields = "id,internetMessageId,conversationId,subject,toRecipients,bodyPreview";
+  const sentItemsUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailboxEmail)}/mailFolders/sentitems/messages?$top=15&$orderby=sentDateTime desc&$select=${selectFields}`;
   const normalizedSubject = normalizeSubject(subject);
   const normalizedRecipient = recipientEmail.trim().toLowerCase();
+  const backoffMs = [500, 1000, 1500, 2000, 3000, 4000, 5000, 8000];
 
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < backoffMs.length; attempt++) {
     if (attempt > 0) {
-      await sleep(1500);
+      await sleep(backoffMs[attempt]);
     }
 
     try {
@@ -96,6 +110,22 @@ async function fetchSentMessageMetadata(
 
       const sentData = await sentResp.json();
       const msgs = Array.isArray(sentData.value) ? sentData.value : [];
+
+      // 1. Correlation-token match — most reliable.
+      if (correlationToken) {
+        const tokenMatch = msgs.find((m: any) =>
+          typeof m.bodyPreview === "string" && m.bodyPreview.includes(correlationToken),
+        );
+        if (tokenMatch) {
+          return {
+            graphMessageId: tokenMatch.id || undefined,
+            internetMessageId: tokenMatch.internetMessageId || undefined,
+            conversationId: tokenMatch.conversationId || undefined,
+          };
+        }
+      }
+
+      // 2. Recipient + subject match.
       const recipientMatches = msgs.filter((m: any) =>
         (m.toRecipients || []).some(
           (r: any) => r.emailAddress?.address?.toLowerCase() === normalizedRecipient,
@@ -118,7 +148,7 @@ async function fetchSentMessageMetadata(
     }
   }
 
-  console.warn(`No sent message metadata found for ${mailboxEmail} after retries`);
+  console.warn(`No sent message metadata found for ${mailboxEmail} after retries (correlation=${correlationToken || "n/a"})`);
   return {};
 }
 
@@ -164,6 +194,60 @@ export async function findSentMessageGraphId(
   }
 }
 
+export interface InternetHeader { name: string; value: string }
+
+/**
+ * Build a hidden HTML span carrying a unique correlation token. Embedded in
+ * every outbound message so we can later match the row in Sent Items even
+ * when subject/recipient heuristics fail (localised "Re:" prefixes, Outlook
+ * tag injection, etc).
+ */
+export function makeCorrelationToken(): string {
+  return `lvc-${crypto.randomUUID().replace(/-/g, "")}`;
+}
+
+function injectCorrelationMarker(htmlBody: string, token: string): string {
+  // Hidden, zero-pixel marker that survives quoting / forwarding without
+  // affecting rendered output. Placed at end so it's the last text in
+  // bodyPreview when the message body is short.
+  const marker = `<span style="display:none !important;font-size:0;line-height:0;color:transparent;">${token}</span>`;
+  return `${htmlBody}${marker}`;
+}
+
+/**
+ * Microsoft Graph's `sendMail` rejects standard RFC 5322 header names
+ * (`In-Reply-To`, `References`) inside `internetMessageHeaders`. The
+ * supported way to set those headers under plain `Mail.Send` permission
+ * (i.e. without `Mail.ReadWrite`) is to attach MAPI extended properties:
+ *
+ *   - `String 0x1042` (PR_IN_REPLY_TO_ID)        → In-Reply-To header
+ *   - `String 0x1039` (PR_INTERNET_REFERENCES)   → References header
+ *   - `String 0x0070` (PR_CONVERSATION_TOPIC)    → Outlook conversation
+ *
+ * Both Outlook (conversation view) and Gmail (RFC threading) honour these,
+ * so a plain `sendMail` with these properties keeps the reply in-thread
+ * even when the much-stricter `createReply` endpoint is denied.
+ */
+interface ExtendedProperty { id: string; value: string }
+function buildThreadingExtendedProperties(opts: {
+  parentInternetMessageId?: string;
+  previousReferences?: string;
+  conversationTopic?: string;
+}): ExtendedProperty[] {
+  const out: ExtendedProperty[] = [];
+  const parent = (opts.parentInternetMessageId || "").trim();
+  if (parent) {
+    out.push({ id: "String 0x1042", value: parent });
+    const refs = [opts.previousReferences || "", parent].map(s => s.trim()).filter(Boolean).join(" ");
+    out.push({ id: "String 0x1039", value: refs });
+  }
+  const topic = (opts.conversationTopic || "").trim();
+  if (topic) {
+    out.push({ id: "String 0x0070", value: topic.replace(/^(re|fw|fwd)\s*:\s*/gi, "").trim() });
+  }
+  return out;
+}
+
 export async function sendEmailViaGraph(
   accessToken: string,
   senderEmail: string,
@@ -172,36 +256,184 @@ export async function sendEmailViaGraph(
   subject: string,
   htmlBody: string,
   fromEmail?: string,
-  _replyToGraphMessageId?: string,
-  _replyToInternetMessageId?: string,
+  replyToGraphMessageId?: string,
+  replyToInternetMessageId?: string,
   attachments?: GraphAttachment[],
+  internetMessageHeaders?: InternetHeader[],
+  options?: { correlationToken?: string; previousReferences?: string; parentMailbox?: string; conversationTopic?: string },
 ): Promise<SendEmailResult> {
   const senderMailbox = (fromEmail || senderEmail).trim();
   const encodedMailbox = encodeURIComponent(senderMailbox);
-  const sendUrl = `https://graph.microsoft.com/v1.0/users/${encodedMailbox}/sendMail`;
 
-  // For replies, ensure subject has "Re:" prefix (thread correlation via conversationId after send)
+  // For replies, ensure subject has "Re:" prefix.
   let finalSubject = subject;
-  if (_replyToGraphMessageId || _replyToInternetMessageId) {
+  if (replyToGraphMessageId || replyToInternetMessageId) {
     if (!/^re\s*:/i.test(finalSubject)) {
       finalSubject = `Re: ${finalSubject}`;
     }
   }
 
+  // Embed correlation marker for reliable Sent Items lookup.
+  const correlationToken = options?.correlationToken || makeCorrelationToken();
+  const finalHtmlBody = injectCorrelationMarker(htmlBody, correlationToken);
+
+  // === MAILBOX SELECTION FOR createReply ===
+  // The parent message lives in whichever mailbox originally sent it. If the
+  // parent was sent as a shared mailbox (e.g. crm@realthingks.com) but the
+  // current send is going through a user mailbox (e.g. user@realthingks.com),
+  // calling createReply against the user mailbox returns 403 ErrorAccessDenied
+  // because Graph can't find the message there. Use the parent's mailbox.
+  const replyMailbox = (options?.parentMailbox || senderMailbox).trim();
+  const encodedReplyMailbox = encodeURIComponent(replyMailbox);
+
+  // Reply path A — auto-resolve graphMessageId from internetMessageId if the
+  // caller didn't have it cached (handles the case where the original send's
+  // metadata capture failed and we never stored graph_message_id).
+  let resolvedReplyGraphId = replyToGraphMessageId;
+  if (!resolvedReplyGraphId && replyToInternetMessageId) {
+    resolvedReplyGraphId = await findSentMessageGraphId(
+      accessToken,
+      replyMailbox,
+      replyToInternetMessageId,
+      null,
+    );
+  }
+
+  // Reply path A — we know the parent's graphMessageId in the SAME mailbox:
+  // use Graph's native createReply + send. Graph guarantees the reply lands
+  // in the same conversationId and writes the canonical In-Reply-To /
+  // References headers itself, which is the most reliable way to keep the
+  // thread together in Outlook AND Gmail.
+  if (resolvedReplyGraphId) {
+    try {
+      const createReplyUrl = `https://graph.microsoft.com/v1.0/users/${encodedReplyMailbox}/messages/${resolvedReplyGraphId}/createReply`;
+      const createResp = await fetch(createReplyUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      if (createResp.ok) {
+        const draft = await createResp.json();
+        const draftId = draft?.id;
+        if (draftId) {
+          const patchBody: Record<string, unknown> = {
+            subject: finalSubject,
+            body: { contentType: "HTML", content: finalHtmlBody },
+            toRecipients: [{ emailAddress: { address: recipientEmail, name: recipientName } }],
+          };
+          if (attachments && attachments.length > 0) {
+            patchBody.attachments = attachments.map((a) => ({
+              "@odata.type": "#microsoft.graph.fileAttachment",
+              name: a.name,
+              contentType: a.contentType || "application/octet-stream",
+              contentBytes: a.contentBytesBase64,
+            }));
+          }
+          const patchResp = await fetch(
+            `https://graph.microsoft.com/v1.0/users/${encodedReplyMailbox}/messages/${draftId}`,
+            {
+              method: "PATCH",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(patchBody),
+            },
+          );
+          if (patchResp.ok) {
+            const sendResp = await fetch(
+              `https://graph.microsoft.com/v1.0/users/${encodedReplyMailbox}/messages/${draftId}/send`,
+              {
+                method: "POST",
+                headers: { Authorization: `Bearer ${accessToken}` },
+              },
+            );
+            if (sendResp.ok) {
+              // Look up metadata in the mailbox where the reply was actually sent.
+              const metadata = await fetchSentMessageMetadata(
+                accessToken,
+                replyMailbox,
+                finalSubject,
+                recipientEmail,
+                correlationToken,
+              );
+              return {
+                success: true,
+                graphMessageId: metadata.graphMessageId,
+                internetMessageId: metadata.internetMessageId,
+                conversationId: metadata.conversationId,
+                sentAsUser: true,
+              };
+            } else {
+              const errBody = await sendResp.text();
+              console.warn(`Native reply send failed (${sendResp.status}); falling back to sendMail with headers. ${errBody}`);
+            }
+          } else {
+            const errBody = await patchResp.text();
+            console.warn(`Native reply PATCH failed (${patchResp.status}); falling back to sendMail with headers. ${errBody}`);
+          }
+        }
+      } else {
+        const errBody = await createResp.text();
+        // createReply requires Mail.ReadWrite (not just Mail.Send) because it
+        // reads + modifies a message in Sent Items. If the app only has
+        // Mail.Send, this returns 403. That's fine — fall through to plain
+        // sendMail + MAPI extended properties below, which keep the message
+        // in-thread under Mail.Send alone.
+        console.warn(`createReply unavailable for ${replyMailbox} (HTTP ${createResp.status}); falling through to sendMail with threading properties. ${errBody.slice(0, 300)}`);
+      }
+    } catch (e) {
+      console.warn("createReply path threw, falling through to sendMail:", (e as Error).message);
+    }
+    // Intentional fall-through to sendMail block below. We do NOT hard-fail
+    // here anymore — sendMail with `singleValueExtendedProperties` carrying
+    // PR_IN_REPLY_TO_ID + PR_INTERNET_REFERENCES gives Outlook & Gmail
+    // proper RFC threading without needing Mail.ReadWrite.
+  }
+
+  // sendMail path — used both for fresh sends AND as the universal reply
+  // fallback when createReply is denied. Threading on replies is achieved
+  // via MAPI extended properties (see buildThreadingExtendedProperties).
+  const sendUrl = `https://graph.microsoft.com/v1.0/users/${encodedMailbox}/sendMail`;
+  const baseAttachments = attachments && attachments.length > 0
+    ? attachments.map((a) => ({
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        name: a.name,
+        contentType: a.contentType || "application/octet-stream",
+        contentBytes: a.contentBytesBase64,
+      }))
+    : undefined;
+
   const message: Record<string, unknown> = {
     subject: finalSubject,
-    body: { contentType: "HTML", content: htmlBody },
+    body: { contentType: "HTML", content: finalHtmlBody },
     toRecipients: [{ emailAddress: { address: recipientEmail, name: recipientName } }],
   };
+  if (baseAttachments) message.attachments = baseAttachments;
 
-  if (attachments && attachments.length > 0) {
-    message.attachments = attachments.map((a) => ({
-      "@odata.type": "#microsoft.graph.fileAttachment",
-      name: a.name,
-      contentType: a.contentType || "application/octet-stream",
-      contentBytes: a.contentBytesBase64,
-    }));
+  // Attach RFC threading via MAPI extended properties on replies. This
+  // works under Mail.Send permission alone (no Mail.ReadWrite needed) and
+  // produces the same In-Reply-To / References headers createReply would.
+  const isReply = !!(replyToInternetMessageId || replyToGraphMessageId);
+  if (isReply) {
+    const extProps = buildThreadingExtendedProperties({
+      parentInternetMessageId: replyToInternetMessageId,
+      previousReferences: options?.previousReferences,
+      conversationTopic: options?.conversationTopic || finalSubject,
+    });
+    if (extProps.length > 0) {
+      message.singleValueExtendedProperties = extProps;
+    }
   }
+
+  const callerHeaders = (internetMessageHeaders || []).map((h) => ({
+    name: h.name.startsWith("x-") || h.name.startsWith("X-") ? h.name : `x-${h.name}`,
+    value: h.value,
+  }));
+  if (callerHeaders.length > 0) message.internetMessageHeaders = callerHeaders;
 
   const sendResp = await fetch(sendUrl, {
     method: "POST",
@@ -215,17 +447,27 @@ export async function sendEmailViaGraph(
   if (!sendResp.ok) {
     const errBody = await sendResp.text();
     let errorCode = "SEND_FAILED";
+    let errorMessage = errBody;
     try {
       const parsed = JSON.parse(errBody);
       errorCode = parsed?.error?.code || "SEND_FAILED";
+      // Surface a clean human message: "<code>: <message> (HTTP <status>)"
+      const graphMsg = parsed?.error?.message || errBody;
+      errorMessage = `${errorCode}: ${graphMsg} (HTTP ${sendResp.status})`;
     } catch { /* ignore */ }
     console.error(`Graph sendMail failed for ${recipientEmail} from ${senderMailbox}: ${sendResp.status} ${errBody}`);
-    return { success: false, error: errBody, errorCode, sentAsUser: false };
+    return { success: false, error: errorMessage, errorCode, sentAsUser: false };
   }
 
   await sendResp.text();
 
-  const metadata = await fetchSentMessageMetadata(accessToken, senderMailbox, finalSubject, recipientEmail);
+  const metadata = await fetchSentMessageMetadata(
+    accessToken,
+    senderMailbox,
+    finalSubject,
+    recipientEmail,
+    correlationToken,
+  );
 
   return {
     success: true,

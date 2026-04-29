@@ -163,7 +163,7 @@ const SuppressionListSettings = () => {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <Ban className="h-4 w-4" />
-          Email Suppression List
+          Do Not Email List
         </CardTitle>
         <p className="text-xs text-muted-foreground">
           Email addresses on this list will never receive campaign emails. Entries are added automatically via

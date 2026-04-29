@@ -1,103 +1,87 @@
-## Campaign Module — Remaining Work Plan
+## Why new sends work but replies fail with 403
 
-The DB + edge function foundation already shipped. Eight UI surfaces remain. Batching them so each batch leaves the app working, and so dependent surfaces ship in order.
+Your observation is correct and reveals the real issue. New sends and replies use **two different Microsoft Graph endpoints** with different permission requirements:
 
----
+| Action | Endpoint | Required Application permission |
+|---|---|---|
+| New email | `POST /users/{mailbox}/sendMail` | `Mail.Send` |
+| Reply (current code) | `POST /users/{mailbox}/messages/{id}/createReply` then `/send` | `Mail.ReadWrite` **AND** `Mail.Send` |
 
-### Batch 1 — Settings & Compliance UIs (ship first)
+`createReply` first **reads** and **modifies** an existing message in your Sent Items to build a draft reply. Without `Mail.ReadWrite`, Graph returns **403 ErrorAccessDenied** — exactly what the logs show:
 
-These are admin-facing, low-risk, and unblock real campaign sends.
+```
+createReply failed against deepak.dongare@realthingks.com (403)
+```
 
-**1.1 Email Signature Editor** — `src/components/settings/account/ProfileSection.tsx`
-- New section "Email Signature" with rich-text-style textarea (HTML allowed, sanitized on save)
-- Live preview pane on the right
-- Saves to `profiles.email_signature`
-- Default template button ("Best regards, {name} · {title}")
-- Used automatically by `send-campaign-email` (already wired)
+So the previous error message ("grant Mail.Send") was misleading — `Mail.Send` IS already granted (that's why new sends work). The missing permission is `Mail.ReadWrite`.
 
-**1.2 Suppression List Manager** — new `src/components/settings/SuppressionListSettings.tsx`
-- Table of all suppressed emails (paginated, searchable by email)
-- Columns: Email, Reason (badge: unsubscribed / bounced / complained / manual), Source, Campaign, Added On, Actions
-- "Add email" dialog (single + bulk paste)
-- "Remove" action (soft-confirms, audit-logged)
-- CSV export
-- Admin-only (gated by `is_current_user_admin()`)
-- Mounted as a new tab in `src/pages/Settings.tsx` admin panel
+Confirmed against your data:
+- `parent_comm.sender_email = deepak.dongare@realthingks.com` ✓
+- `parent_comm.graph_message_id` is present ✓
+- The reply target mailbox is correct, but the operation type is what's denied.
 
-**1.3 Send-Cap Settings** — new `src/components/settings/SendCapSettings.tsx`
-- Global cap card: hourly limit, daily limit, enabled toggle
-- Per-campaign overrides table (campaign name, hourly, daily, enabled)
-- "Add override" dialog with campaign picker
-- Live indicator showing current usage vs cap (calls `check_send_cap` RPC)
-- Mounted alongside Suppression in admin settings
+## The fix has two layers
 
----
+### Layer 1 — Make replies work WITHOUT requiring `Mail.ReadWrite` (preferred)
 
-### Batch 2 — Campaign Workflow UIs
+Stop using `createReply` for threading. Instead, send a normal `POST /sendMail` and stitch the thread together using **MAPI extended properties** that Outlook and Gmail both honor for threading. Microsoft Graph rejects RFC names (`In-Reply-To`/`References`) in `internetMessageHeaders`, but the same values can be set as **`singleValueExtendedProperties`**:
 
-These extend the campaign detail page with industry-standard features.
+| MAPI property | PidTag | Purpose |
+|---|---|---|
+| `String 0x1042` | `PR_IN_REPLY_TO_ID` | Sets RFC `In-Reply-To` header |
+| `String 0x1039` | `PR_INTERNET_REFERENCES` | Sets RFC `References` header |
+| `String 0x0070` | `PR_CONVERSATION_TOPIC` | Anchors Outlook conversation grouping |
 
-**2.1 Multi-touch Sequences UI** — new `src/components/campaigns/CampaignSequences.tsx`
-- New tab in `CampaignDetail.tsx` between "Communications" and "Analytics"
-- List of sequence steps (sortable, drag-to-reorder)
-- Per step: channel (Email/LinkedIn/Call), wait days after previous, template picker, active toggle
-- "Add step" button (max 7 steps)
-- Visual timeline showing Day 0 → Day N
-- Reads/writes `campaign_sequences` table
-- Followed-up rows already populated by `campaign-follow-up-runner` cron
+This is a documented Microsoft Graph technique that works under plain `Mail.Send` permission — no `Mail.ReadWrite` needed. Both Outlook (native conversation view) and Gmail (RFC threading) will keep replies in the same thread.
 
-**2.2 Reply Intent Badges** — edits to `CampaignCommunications.tsx`
-- For each inbound email row, show colored badge: Positive (green), Negative (red), Neutral (gray), Auto-reply (yellow), Meeting Requested (purple)
-- "Classify" button on unclassified rows (calls `classify-reply-intent` edge function)
-- Auto-classify on first view via `useEffect` queue (rate-limited, max 5 in flight)
-- Filter dropdown above inbox: "All / Positive / Negative / Meeting Requested"
+`createReply` becomes an optional fast-path: try it first only if it succeeds; on 403/4xx, immediately fall through to `sendMail` + extended-properties (no second `createReply` retry, no fall-through error).
 
-**2.3 Audience Segment Manager** — new `src/components/campaigns/CampaignSegments.tsx`
-- Embedded in the existing Audience tab (collapsible "Segments" header)
-- Create named segments with filters (industry, region, title contains, account size)
-- Saved segments appear as clickable pills that filter the audience table
-- Reads/writes existing `campaign_audience_segments` table
+### Layer 2 — Honest, accurate error messaging
 
----
+If `sendMail` itself eventually fails (e.g. mailbox revoked), the error must reflect what actually went wrong:
 
-### Batch 3 — Performance & Monitoring
+- **HTTP 403 on `/sendMail`** → "Microsoft 365 denied send access for {sender}. Ask your admin to grant `Mail.Send` Application permission and ensure the Application Access Policy includes this mailbox."
+- **HTTP 403 on `/createReply` (best-effort path)** → log a warning only; do NOT surface to the user — the sendMail path takes over.
+- **HTTP 4xx/5xx on `/sendMail`** → surface raw Graph error code + message (currently swallowed).
 
-Heaviest changes; ship last so earlier batches stabilize first.
+## Changes I'll make
 
-**3.1 Outlook-Style 2-Pane Monitoring** — rewrite `src/components/campaigns/CampaignCommunications.tsx` (currently 2,569 lines)
-- Left pane (40%): scrollable thread list grouped by contact, with last message preview + status icons
-- Right pane (60%): selected thread detail — full message timeline, reply box, contact card, action buttons
-- Keyboard nav (j/k to move, r to reply, e to archive)
-- Split current monolith into: `CommunicationsThreadList.tsx`, `CommunicationsThreadDetail.tsx`, `CommunicationsToolbar.tsx`, `useCampaignCommunications.tsx` hook
-- Preserve all existing functionality (filters, bulk actions, AI compose)
+### `supabase/functions/_shared/azure-email.ts`
+1. **Rewrite `sendEmailViaGraph` reply path**:
+   - Try `createReply + PATCH + send` once (best-effort, no retry against alternate mailbox).
+   - On any failure (403, 404, 5xx) → fall through to `sendMail` with `singleValueExtendedProperties` carrying `PR_IN_REPLY_TO_ID`, `PR_INTERNET_REFERENCES`, and `PR_CONVERSATION_TOPIC`.
+   - Build References header value as: `previousReferences + " " + parent.internetMessageId`.
+   - Pass `internetMessageId` of parent into the extended-properties payload.
+   - Remove the hard-fail `REPLY_THREADING_BROKEN` block — sendMail with extended props is the new fallback, not an error.
+2. **Drop the misleading `Mail.Send` advice** from the createReply 403 message and replace with a concise log-only warning.
+3. **Bubble up real Graph error**: when `sendMail` itself returns non-OK, return `{ success: false, errorCode: <graph code>, error: <graph message + HTTP status> }` verbatim.
 
-**3.2 CampaignDashboard Server-Side Aggregation**
-- Move client-side filtering of 100k+ communication rows into a new RPC `get_campaign_dashboard_aggregates(p_filters jsonb)`
-- Returns pre-computed tiles, funnel, top campaigns, channel breakdown
-- React Query with 60s stale time
-- Removes the current ~2s render lag on dashboards with many campaigns
+### `supabase/functions/send-campaign-email/index.ts`
+4. Update the user-facing error mapping at line ~668: only translate to the "grant Mail.Send" hint when the failed operation is a NEW send (no parent). For reply failures, surface the actual Graph error string (or our richer mapping when it's clearly a `Mail.ReadWrite` denial that escaped the fallback).
+5. Keep the previous fix: still no shared-mailbox impersonation.
 
----
+### `src/components/campaigns/EmailComposeModal.tsx`
+6. Helper-text in the failure toast: distinguish "send failed" vs "thread continuity unavailable but message sent". The new flow always sends — no need for the misleading admin-permission hint on replies.
 
-### Execution Order & Approval
+## Files touched
 
-Recommend shipping **Batch 1 in this next turn** (3 self-contained admin UIs, ~800 lines total, no risk to existing flows).
-Then Batch 2, then Batch 3 — each in its own turn.
+- `supabase/functions/_shared/azure-email.ts` — new threading strategy via extended properties
+- `supabase/functions/send-campaign-email/index.ts` — context-aware error mapping
+- `src/components/campaigns/EmailComposeModal.tsx` — clearer failure toast
+- (optional) add a Deno test stub for the extended-properties payload shape
 
-| File | Type | Batch |
-|------|------|-------|
-| `settings/account/ProfileSection.tsx` | edit | 1 |
-| `settings/SuppressionListSettings.tsx` | new | 1 |
-| `settings/SendCapSettings.tsx` | new | 1 |
-| `pages/Settings.tsx` | edit (mount tabs) | 1 |
-| `campaigns/CampaignSequences.tsx` | new | 2 |
-| `pages/CampaignDetail.tsx` | edit (new tab) | 2 |
-| `campaigns/CampaignCommunications.tsx` | edit (badges) | 2 |
-| `campaigns/CampaignSegments.tsx` | new | 2 |
-| `campaigns/CommunicationsThreadList.tsx` | new | 3 |
-| `campaigns/CommunicationsThreadDetail.tsx` | new | 3 |
-| `campaigns/CommunicationsToolbar.tsx` | new | 3 |
-| `hooks/useCampaignCommunications.tsx` | new | 3 |
-| migration: `get_campaign_dashboard_aggregates` RPC | new | 3 |
+## What I will NOT change
 
-No new secrets, no new tables (all schema already migrated). Approve to proceed with **Batch 1**.
+- No DB schema changes.
+- No changes to `daily-action-reminders` (already works — it uses `sendMail`, not `createReply`).
+- No changes to `campaign-follow-up-runner` (already uses `sendMail`).
+- No request to your admin to grant `Mail.ReadWrite` — the goal is to remove that requirement.
+
+## Expected outcome
+
+After deploy, replying inside a thread will:
+1. Attempt `createReply` (silent best-effort — succeeds only if `Mail.ReadWrite` exists).
+2. On any failure → fall through to `sendMail` with MAPI threading properties → message arrives, threads correctly in Outlook + Gmail.
+3. Only fails (with a clear, accurate error) if Graph's `sendMail` itself rejects the request.
+
+No more "grant Mail.Send" message when Mail.Send is already granted.
