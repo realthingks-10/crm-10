@@ -741,7 +741,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
   };
 
   const handleCreateTask = async () => {
-    if (!taskForm.title.trim()) { toast({ title: "Task title is required", variant: "destructive" }); return; }
+    if (!taskForm.title.trim()) { toast({ title: "Action item title is required", variant: "destructive" }); return; }
     // Enrich description with contact/account info for CampaignActionItems parsing
     let enrichedDescription = taskForm.description || "";
     if (taskContactId) {
@@ -759,12 +759,12 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
       status: "Open", module_type: "campaigns", module_id: campaignId,
       created_by: user!.id, assigned_to: user!.id,
     }).select("id").single();
-    if (error) { toast({ title: "Error creating task", description: error.message, variant: "destructive" }); return; }
+    if (error) { toast({ title: "Error creating action item", description: error.message, variant: "destructive" }); return; }
     await logCreate('action_items', inserted?.id || '', { title: taskForm.title, module_type: 'campaigns', campaign_id: campaignId, contact_id: taskContactId });
     setTaskModalOpen(false);
     setTaskForm({ title: "", description: "", due_date: "", priority: "Medium" });
     setTaskContactId("");
-    toast({ title: "Task created" });
+    toast({ title: "Action item created" });
   };
 
   const openTaskForContact = (contactId: string, contactName: string) => {
@@ -1440,7 +1440,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
                       {thread.channelCounts.LinkedIn > 0 && <Badge variant="secondary" className="text-[10px] gap-0.5"><MessageSquare className="h-2.5 w-2.5" />{thread.channelCounts.LinkedIn}</Badge>}
                       {!isCampaignEnded && (
                         <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-0.5" onClick={(e) => { e.stopPropagation(); openTaskForContact(thread.contactId, thread.contactName); }}>
-                          <ListChecks className="h-3 w-3" /> Task
+                          <ListChecks className="h-3 w-3" /> Action Item
                         </Button>
                       )}
                     </div>
@@ -1682,7 +1682,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
                             className="h-7 text-xs gap-1"
                             onClick={() => openTaskForContact(selectedThread.contactId, selectedThread.contactName)}
                           >
-                            <ListChecks className="h-3 w-3" /> Task
+                            <ListChecks className="h-3 w-3" /> Action Item
                           </Button>
                         </>
                       )}
@@ -2713,10 +2713,10 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
         </DialogContent>
       </Dialog>
 
-      {/* Create Task Modal */}
+      {/* Create Action Item Modal */}
       <Dialog open={taskModalOpen} onOpenChange={setTaskModalOpen}>
         <DialogContent className="sm:max-w-[450px]">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><ListChecks className="h-4 w-4" /> Create Follow-up Task</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><ListChecks className="h-4 w-4" /> Create Follow-up Action Item</DialogTitle></DialogHeader>
           <div className="grid gap-3 py-2">
             {taskContactId && (() => {
               const contact = campaignContacts.find((cc: any) => cc.contact_id === taskContactId);
@@ -2741,7 +2741,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
             })()}
             <div className="space-y-1.5">
               <Label className="text-xs">Title *</Label>
-              <Input value={taskForm.title} onChange={e => setTaskForm({ ...taskForm, title: e.target.value })} placeholder="Task title..." className="text-sm" />
+              <Input value={taskForm.title} onChange={e => setTaskForm({ ...taskForm, title: e.target.value })} placeholder="Action item title..." className="text-sm" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Description</Label>
@@ -2767,7 +2767,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, isReadOnly
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTaskModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateTask}>Create Task</Button>
+            <Button onClick={handleCreateTask}>Create Action Item</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
